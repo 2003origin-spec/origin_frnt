@@ -5,30 +5,17 @@ import { getServerFrontendUser } from '@/lib/auth-server';
 import { isFeatureEnabledRuntime } from '@/server/feature-flags-runtime';
 import { isExamPresetId } from '@/lib/exam-blueprints';
 import type { RankPredictorExam } from '@/lib/rank-predictor/types';
-import { rankPredictorShiftOptions } from '@/server/rank-predictor/data';
-import RankPredictor from '@/sections/RankPredictor/RankPredictor';
+import PredictorPage, { predictorMetadata } from '@/sections/RankPredictor/PredictorPage';
 
 // Rank Predictor (V1/PERCENTILE_PREDICTOR_PLAN.md §9.1). Public: visitors get
 // 2 free checks a day (enforced by the API, plan §8), signed-in users unlimited.
 // 404 while the flag is off (runtime check, so the kill switch hides it too).
+// Exam entry pages live at /rank-predictor/[exam] (SEO_APP_DOWNLOAD_NOTES.md).
 export const dynamic = 'force-dynamic';
 
-const METADATA: Metadata = {
-  title: 'NEET & JEE Rank Predictor 2027 — Free | Origin',
-  description:
-    'Free NEET, JEE Main and JEE Advanced rank predictor: enter your marks per subject and see your All India rank, category rank and state rank range, from past years’ official results.',
-  alternates: { canonical: '/rank-predictor' },
-  openGraph: {
-    title: 'NEET & JEE Rank Predictor 2027 — Free | Origin',
-    description: 'Enter your marks per subject and see your All India rank range, from past years’ official results.',
-    url: '/rank-predictor',
-    type: 'website',
-  },
-};
-
-// Flag off: no title or description either, so nothing about the page leaks.
+// Flag off: no title, description or JSON-LD either, so nothing about the page leaks.
 export async function generateMetadata(): Promise<Metadata> {
-  return (await isFeatureEnabledRuntime('rankPredictor')) ? METADATA : {};
+  return (await isFeatureEnabledRuntime('rankPredictor')) ? predictorMetadata(null) : {};
 }
 
 type PageProps = { searchParams?: Promise<{ attempt?: string | string[] }> };
@@ -52,9 +39,9 @@ export default async function RankPredictorPage({ searchParams }: PageProps) {
   const collegesEnabled = await isFeatureEnabledRuntime('collegeCounselling');
 
   return (
-    <RankPredictor
+    <PredictorPage
+      examPage={null}
       initialExam={isExamPresetId(initialExam) ? initialExam : 'neet'}
-      shiftOptions={rankPredictorShiftOptions()}
       initialAttemptId={attemptId}
       collegesEnabled={collegesEnabled}
     />

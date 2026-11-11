@@ -14,6 +14,8 @@ import Link from 'next/link';
 import { ArrowLeft, Check, ClipboardList, Loader2, LogIn, RotateCcw } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { trackEvent } from '@/lib/analytics';
+import { yesNo } from '@/lib/analytics-events';
 
 import type { AttemptFill } from '@/lib/rank-predictor/attempt-mapping';
 import { DISCLAIMER, EXAM_LABEL, categoryLabel } from '@/lib/rank-predictor/format';
@@ -64,12 +66,20 @@ export default function RankPredictor({
   shiftOptions,
   initialAttemptId,
   collegesEnabled = false,
+  heading = 'Rank Predictor',
+  intro = 'Your marks in, a rank range out — from past years\u2019 official results.',
+  children,
 }: {
   initialExam: RankPredictorExam;
   shiftOptions: ShiftOption[];
   initialAttemptId: string | null;
   /** College finder live (plan §11): the result card links to it. */
   collegesEnabled?: boolean;
+  /** Exam entry pages (/rank-predictor/neet …) set their own h1 and line. */
+  heading?: string;
+  intro?: string;
+  /** Server-rendered "about" and FAQ blocks, shown under the tool. */
+  children?: React.ReactNode;
 }) {
   const ids = useId();
   // Seeded from the server render, and it also recovers a session client-side
@@ -166,7 +176,8 @@ export default function RankPredictor({
     [exam, marks, category, pwd, homeState, shift, result],
   );
 
-  const predict = useCallback(async () => {
+  /** `byUser`: the user pressed Predict / Try again (GA submit); false for the automatic re-runs. */
+  const predict = useCallback(async (byUser = true) => {
     const built = buildInput();
     if ('error' in built) {
       setFieldError(built.error);
@@ -177,15 +188,20 @@ export default function RankPredictor({
     setFieldError(null);
     setRequestError(null);
     setLoading(true);
+    // GA: exam and signed-in only (never marks, ranks or details — src/lib/analytics-events.ts).
+    const tracked = { exam: built.input.exam, signed_in: yesNo(signedIn), placement: 'page' as const };
+    if (byUser) trackEvent('rank_predictor_submit', tracked);
     try {
       const response = await requestPrediction(built.input);
       setResult(response);
       setWhatIfDelta(null);
       setAccess(response.access);
+      trackEvent('rank_predictor_result', tracked);
       requestAnimationFrame(() => resultRef.current?.focus());
     } catch (error) {
       if (error instanceof PredictorError && error.code === 'login_required') {
         setAccess(error.access ?? { signedIn: false, remainingToday: 0, limit: FREE_CHECKS_PER_DAY });
+        trackEvent('rank_predictor_limit_reached', { exam: built.input.exam, placement: 'page' });
         setLimitOpen(true);
       } else {
         setRequestError(friendlyError(error, 'Something went wrong. Try again.'));
@@ -193,12 +209,13 @@ export default function RankPredictor({
     } finally {
       setLoading(false);
     }
-  }, [buildInput, ids]);
+  }, [buildInput, ids, signedIn]);
 
   const onSubmit = () => {
     // Out of free checks: the button reads "Log in for unlimited checks" and
     // opens the login sheet; the shown result stays on the page.
     if (outOfChecks) {
+      trackEvent('rank_predictor_limit_reached', { exam, placement: 'page' });
       setLimitOpen(true);
       return;
     }
@@ -250,7 +267,7 @@ export default function RankPredictor({
   useEffect(() => {
     if (pendingAuto) {
       setPendingAuto(false);
-      void predict();
+      void predict(false);
     }
   }, [pendingAuto, predict]);
 
@@ -287,7 +304,10 @@ export default function RankPredictor({
           </Link>
           <Link
             href={LOGIN_HREF}
-            onClick={() => keepForLogin(false)}
+            onClick={() => {
+              trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_page', placement: 'page' });
+              keepForLogin(false);
+            }}
             className={`inline-flex h-12 items-center gap-2 rounded-full border border-border px-4 text-[14px] font-semibold text-foreground hover:bg-surface-2 ${fieldFocus}`}
           >
             <LogIn aria-hidden className="size-4" /> Log in
@@ -296,10 +316,10 @@ export default function RankPredictor({
       ) : null}
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-[34px] font-extrabold leading-none text-foreground">Rank Predictor</h1>
+          <h1 className="font-display text-[34px] font-extrabold leading-none text-foreground">{heading}</h1>
           <span className="rounded-full bg-primary/15 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-foreground">Free</span>
         </div>
-        <p className="text-[14px] text-muted-foreground">Your marks in, a rank range out — from past years&apos; official results.</p>
+        <p className="text-[14px] text-muted-foreground">{intro}</p>
       </header>
 
       {/* Exam tabs */}
@@ -532,7 +552,10 @@ export default function RankPredictor({
                   <span aria-hidden>·</span>
                   <Link
                     href={LOGIN_HREF}
-                    onClick={() => keepForLogin(false)}
+                    onClick={() => {
+                      trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_page', placement: 'page' });
+                      keepForLogin(false);
+                    }}
                     className={`inline-flex min-h-12 items-center rounded-full px-2 font-semibold text-foreground underline underline-offset-4 ${fieldFocus}`}
                   >
                     Log in for unlimited
@@ -570,9 +593,15 @@ export default function RankPredictor({
             whatIfDelta={whatIfDelta}
             onWhatIf={setWhatIfDelta}
             signedIn={signedIn}
-            onLoginForColleges={() => keepForLogin(true)}
+            onLoginForColleges={() => {
+              trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_colleges', placement: 'page' });
+              keepForLogin(true);
+            }}
             collegesEnabled={collegesEnabled}
-            onOpenColleges={() => saveHandoff(handoffFromPrediction(result.prediction, { category, pwd, homeState }))}
+            onOpenColleges={() => {
+              trackEvent('college_finder_handoff', { exam: result.prediction.exam, signed_in: yesNo(signedIn) });
+              saveHandoff(handoffFromPrediction(result.prediction, { category, pwd, homeState }));
+            }}
           />
         ) : (
           <p className="rounded-[18px] bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">{DISCLAIMER}</p>
@@ -580,7 +609,9 @@ export default function RankPredictor({
       </div>
 
       {canFill ? <FillFromTests open={sheetOpen} onOpenChange={setSheetOpen} exam={exam} onFill={applyFill} /> : null}
-      {!signedIn ? <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => keepForLogin(true)} returnFocusTo={submitRef} /> : null}
+      {children}
+
+      {!signedIn ? <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => keepForLogin(true)} returnFocusTo={submitRef} placement="page" /> : null}
     </main>
   );
 }

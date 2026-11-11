@@ -167,6 +167,11 @@ export const PUBLIC_APP_PATHS = [
   // Rank Predictor (V1/PERCENTILE_PREDICTOR_PLAN.md §8, §9.1): open to visitors
   // with 2 free checks a day. The page 404s while the rankPredictor flag is off.
   "/rank-predictor",
+  // Exam entry pages for search (SEO_APP_DOWNLOAD_NOTES.md): the same tool with
+  // one exam pre-selected. Listed one by one; any other slug stays non-public.
+  "/rank-predictor/neet",
+  "/rank-predictor/jee-main",
+  "/rank-predictor/jee-advanced",
   // College finder (plan §11, Q9): logged-out visitors see a short preview and
   // "Create a free account / Log in"; the search API itself is signed-in only
   // (/api/assessments/*). 404s unless rankPredictor and collegeCounselling are on.

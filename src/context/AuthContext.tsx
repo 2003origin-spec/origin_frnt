@@ -35,6 +35,7 @@ import {
 import { DEFAULT_STUDY_MODE, normalizeStudyMode, type StudyMode } from '@/lib/study-mode';
 import { track } from '@/lib/analytics';
 import { homeAfterLogin } from '@/lib/login-return';
+import { EXAM_PAGE_LIST } from '@/lib/seo/rank-predictor-seo';
 
 /**
  * Every successful sign-in starts from a clean device: the service worker's
@@ -125,7 +126,9 @@ const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
 // opens it from an email, logged in to Origin or not (V1/ORIGIN_NOW_PLAN.md).
 // '/rank-predictor' is the public Rank Predictor (2 free checks a day for
 // visitors, V1/PERCENTILE_PREDICTOR_PLAN.md §8); the page itself 404s while its flag is off.
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor', '/rank-predictor/colleges'];
+// Its exam entry pages (/rank-predictor/neet …) are public too, taken from the same list the
+// pages, sitemap and route-policy test use (SEO_APP_DOWNLOAD_NOTES.md).
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor', ...EXAM_PAGE_LIST.map((page) => page.path), '/rank-predictor/colleges'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;

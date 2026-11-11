@@ -18,6 +18,8 @@ import { motion, MotionConfig, useReducedMotion } from 'framer-motion';
 import { ArrowRight, Check, Loader2, LogIn, RotateCcw } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
+import { trackEvent } from '@/lib/analytics';
+import { yesNo } from '@/lib/analytics-events';
 import { INDIAN_STATES } from '@/lib/constants';
 import { DISCLAIMER, EXAM_LABEL, NOT_ENOUGH_DATA, NOT_ON_RANK_LIST, QUALITY_LABEL, categoryLabel, formatRankRange, rankListTitle, spokenRange } from '@/lib/rank-predictor/format';
 import { EXAM_MAX_MARKS, EXAM_SUBJECTS } from '@/lib/rank-predictor/subjects';
@@ -157,16 +159,21 @@ export default function RankPredictorWidget() {
     setFieldError(null);
     setRequestError(null);
     setLoading(true);
+    // GA: exam and signed-in only (never marks, ranks or details — src/lib/analytics-events.ts).
+    const tracked = { exam: built.input.exam, signed_in: yesNo(signedIn), placement: 'landing' as const };
+    trackEvent('rank_predictor_submit', tracked);
     try {
       const response = await requestPrediction(built.input);
       setResult(response);
       setPredictedForm(form);
       setAccess(response.access);
+      trackEvent('rank_predictor_result', tracked);
       // On phones the result sits below the form: focusing it also scrolls it into view.
       requestAnimationFrame(() => resultRef.current?.focus());
     } catch (error) {
       if (error instanceof PredictorError && error.code === 'login_required') {
         setAccess(error.access ?? { signedIn: false, remainingToday: 0, limit: FREE_CHECKS_PER_DAY });
+        trackEvent('rank_predictor_limit_reached', { exam: built.input.exam, placement: 'landing' });
         openLimit();
       } else {
         setRequestError(friendlyError(error, 'Something went wrong. Try again.'));
@@ -178,6 +185,7 @@ export default function RankPredictorWidget() {
 
   const onSubmit = () => {
     if (outOfChecks) {
+      trackEvent('rank_predictor_limit_reached', { exam, placement: 'landing' });
       openLimit();
       return;
     }
@@ -390,7 +398,10 @@ export default function RankPredictorWidget() {
                             <Link
                               href={LOGIN_HREF}
                               // Signed in, a re-run costs nothing: a result on screen comes back after login too.
-                              onClick={() => savePending({ ...form, predict: result !== null })}
+                              onClick={() => {
+                                trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_page', placement: 'landing' });
+                                savePending({ ...form, predict: result !== null });
+                              }}
                               className={`inline-flex min-h-12 items-center rounded-full px-2 font-semibold text-white underline underline-offset-4 ${focus}`}
                             >
                               Log in for unlimited
@@ -467,7 +478,10 @@ export default function RankPredictorWidget() {
                     </ul>
                     <Link
                       href="/rank-predictor"
-                      onClick={() => predictedForm && savePending({ ...predictedForm, predict: true, alreadyCounted: true })}
+                      onClick={() => {
+                        trackEvent('rank_predictor_details_click', { exam, placement: 'landing' });
+                        if (predictedForm) savePending({ ...predictedForm, predict: true, alreadyCounted: true });
+                      }}
                       className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-white/35 px-5 text-[15px] font-semibold text-white hover:bg-white/10 ${focus}`}
                     >
                       See full details <ArrowRight aria-hidden className="size-4" />
@@ -483,7 +497,7 @@ export default function RankPredictorWidget() {
           </div>
         </div>
         {!signedIn && sheetLoaded ? (
-          <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => savePending({ ...form, predict: true })} returnFocusTo={submitRef} />
+          <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => savePending({ ...form, predict: true })} returnFocusTo={submitRef} placement="landing" />
         ) : null}
       </section>
     </MotionConfig>

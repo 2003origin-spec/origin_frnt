@@ -15,6 +15,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Info, Loader2, RotateCcw, Search } from 'lucide-react';
 
+import { trackEvent } from '@/lib/analytics';
 import { INDIAN_STATES } from '@/lib/constants';
 import { STATE_BODY_BY_STATE } from '@/lib/counselling/states';
 import { BAND_HINT, BAND_LABEL, BODY_DATA_NOTE, CATEGORY_SEAT_LABEL, INSTITUTE_TYPE_LABEL, formatRank } from '@/lib/counselling/format';
@@ -228,6 +229,8 @@ export default function CollegeFinder({ initialExam }: { initialExam: Counsellin
   const onSubmit = () => {
     const q = buildQuery();
     if (!q) return;
+    // GA: the exam only (never ranks, category, gender or state — src/lib/analytics-events.ts).
+    trackEvent('college_finder_search', { exam });
     setBand('all');
     void run(q, true);
   };

@@ -1,11 +1,14 @@
 import Link from 'next/link';
 import { ArrowLeft, Check, LogIn, UserPlus } from 'lucide-react';
 
+import { FaqList } from '@/components/seo/FaqList';
 import { COUNSELLING_DISCLAIMER, OFFICIAL_LINKS } from '@/lib/counselling/format';
+import { COLLEGE_FINDER_FAQ, EXAM_PAGE_LIST } from '@/lib/seo/rank-predictor-seo';
 
 import { COLLEGES_LOGIN_HREF, COLLEGES_SIGNUP_HREF } from '@/sections/RankPredictor/login-links';
 
 import { BandChip } from './ResultRow';
+import TrackedAuthLink from './TrackedAuthLink';
 
 
 const fieldFocus = 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
@@ -23,10 +26,10 @@ export default function CollegeFinderPreview() {
       </Link>
       <header className="-mt-2 flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-display text-[34px] font-extrabold leading-none text-foreground">College finder</h1>
+          <h1 className="font-display text-[34px] font-extrabold leading-none text-foreground">College finder for JoSAA, CSAB and NEET</h1>
           <span className="rounded-full bg-primary/15 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-foreground">Free</span>
         </div>
-        <p className="text-[14px] text-muted-foreground">Which colleges your rank would have got in past years, round by round.</p>
+        <p className="text-[14px] text-muted-foreground">Which colleges your JEE or NEET rank would have got in past years, round by round, from official closing ranks.</p>
       </header>
 
       <section className="flex flex-col gap-4 rounded-[18px] border border-border bg-card p-4 sm:p-6">
@@ -58,21 +61,47 @@ export default function CollegeFinderPreview() {
         </figure>
 
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Link
+          <TrackedAuthLink
             href={COLLEGES_SIGNUP_HREF}
+            action="sign_up"
             className={`inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-primary px-6 text-[16px] font-semibold text-primary-foreground ${fieldFocus}`}
           >
             <UserPlus aria-hidden className="size-5" /> Create a free account
-          </Link>
-          <Link
+          </TrackedAuthLink>
+          <TrackedAuthLink
             href={COLLEGES_LOGIN_HREF}
+            action="log_in"
             className={`inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full border border-border px-6 text-[16px] font-semibold text-foreground hover:bg-surface-2 ${fieldFocus}`}
           >
             <LogIn aria-hidden className="size-5" /> Log in
-          </Link>
+          </TrackedAuthLink>
         </div>
         <p className="text-[13px] text-muted-foreground">Free with any Origin account. No approval, no daily limit.</p>
       </section>
+
+      <section aria-labelledby="college-finder-how" className="flex flex-col gap-3 rounded-[18px] border border-border bg-card p-4 sm:p-6">
+        <h2 id="college-finder-how" className="font-display text-[21px] font-bold text-foreground">How it works</h2>
+        <ol className="flex list-decimal flex-col gap-2 pl-5 text-[14px] leading-relaxed text-foreground">
+          <li>Get your rank range from the free Rank Predictor, or type the rank you already have.</li>
+          <li>Pick your category, gender and home state, so you only see seats you can apply for.</li>
+          <li>See every matching seat as Safe, Likely or Reach, with the closing rank of each counselling round.</li>
+        </ol>
+        <p className="text-[14px] text-muted-foreground">Don&apos;t know your rank yet? Start with a rank predictor:</p>
+        <ul className="flex flex-wrap gap-2">
+          {EXAM_PAGE_LIST.map((page) => (
+            <li key={page.path}>
+              <Link
+                href={page.path}
+                className={`inline-flex min-h-12 items-center rounded-full border border-border px-4 text-[14px] font-semibold text-foreground hover:bg-surface-2 ${fieldFocus}`}
+              >
+                {page.heading}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <FaqList items={COLLEGE_FINDER_FAQ} headingId="college-finder-faq" />
 
       <footer className="flex flex-col gap-2 rounded-[18px] bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
         <p>{COUNSELLING_DISCLAIMER}</p>

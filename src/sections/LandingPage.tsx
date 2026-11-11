@@ -41,7 +41,10 @@ import {
   Sun,
   Moon,
   Gamepad2,
+  Smartphone,
 } from 'lucide-react';
+import GetAppButton from '@/components/app-download/GetAppButton';
+import { EXAM_PAGE_LIST } from '@/lib/seo/rank-predictor-seo';
 import LandingCTABtn from '@/components/landing/LandingCTABtn';
 import RankPredictorChip from '@/components/landing/RankPredictorChip';
 import { getRegistrationStatusAction } from '@/server/actions/system-actions';
@@ -629,7 +632,8 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
             </div>
 
             {/* Desktop Links (hidden on mobile, md:flex) — scroll to page sections or route */}
-            <div className="hidden md:flex items-center gap-8">
+            {/* gap-4 below lg: at 768–1023 px gap-8 made the bar ~20 px wider than the screen. */}
+            <div className="hidden md:flex items-center gap-4 lg:gap-8">
               {navLinks.map((link) => (
                 link.href ? (
                   <Link
@@ -652,7 +656,16 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
               ))}
             </div>
 
-            <div className="flex items-center gap-2 sm:gap-4">
+            <div className="flex items-center gap-2 sm:gap-4 md:gap-2 lg:gap-4">
+              {/* Get the app (desktop bar; phones get it in the menu). Icon only at 768–1023 px, where the bar is full. */}
+              <GetAppButton
+                placement="landing_nav"
+                label="Get the app"
+                className="hidden md:inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-border/60 px-3 lg:px-4 text-sm font-semibold text-foreground transition-colors hover:bg-foreground/5 whitespace-nowrap"
+              >
+                <Smartphone aria-hidden className="w-4 h-4" />
+                <span className="hidden lg:inline">Get the app</span>
+              </GetAppButton>
               <button
                 onClick={() => setTheme(actualTheme === 'dark' ? 'light' : 'dark')}
                 aria-label="Toggle dark mode"
@@ -732,6 +745,13 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
                     )
                   ))}
                 </div>
+
+                <GetAppButton
+                  placement="landing_menu"
+                  className="mb-6 flex min-h-12 items-center gap-3 rounded-2xl border border-border/60 px-4 py-3 text-base font-heading font-black text-foreground transition-colors hover:bg-foreground/5"
+                >
+                  <Smartphone aria-hidden className="w-5 h-5 text-primary" /> Get the app
+                </GetAppButton>
 
                 <div className="h-px bg-border/40 mb-6" />
 
@@ -1063,6 +1083,18 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
           <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center md:items-end justify-between gap-8">
             <div className="flex flex-col items-center md:items-start gap-2">
               <span className="text-[10px] font-black text-muted-foreground/60 tracking-[0.4em]">© 2026 SUPERGOAT TECHNOLOGIES PRIVATE LIMITED</span>
+              {/* Free tools: plain links so search engines find the predictor pages from home (flag on only). */}
+              {rankPredictorEnabled && (
+                <nav aria-label="Free tools" className="flex flex-wrap justify-center md:justify-start gap-2 sm:gap-4 text-xs text-muted-foreground mt-2">
+                  <Link href="/rank-predictor" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-semibold text-foreground">Free Rank Predictor</Link>
+                  {EXAM_PAGE_LIST.map((page) => (
+                    <span key={page.path} className="contents">
+                      <span className="hidden sm:inline text-border">•</span>
+                      <Link href={page.path} className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">{page.heading}</Link>
+                    </span>
+                  ))}
+                </nav>
+              )}
               <div className="flex flex-wrap gap-2 sm:gap-4 text-xs text-muted-foreground mt-2">
                 <a href="/terms-and-conditions" className="inline-flex min-h-11 items-center hover:text-primary transition-colors font-medium">Terms & Conditions</a>
                 <span className="hidden sm:inline text-border">•</span>

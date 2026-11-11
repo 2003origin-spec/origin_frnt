@@ -11,6 +11,8 @@ import Link from 'next/link';
 import { LogIn, UserPlus } from 'lucide-react';
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { trackEvent } from '@/lib/analytics';
+import type { PredictorPlacement } from '@/lib/analytics-events';
 
 import { FREE_CHECKS_LABEL, LOGIN_HREF, SIGNUP_HREF } from './login-links';
 
@@ -24,7 +26,10 @@ export default function LimitSheet({
   onOpenChange,
   onLeave,
   returnFocusTo,
+  placement,
 }: {
+  /** GA: where the limit was hit (page or landing widget). */
+  placement: PredictorPlacement;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Called right before going to /auth, to keep the form for the way back. */
@@ -58,14 +63,20 @@ export default function LimitSheet({
           <Link
             ref={loginRef}
             href={LOGIN_HREF}
-            onClick={onLeave}
+            onClick={() => {
+              trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_limit', placement });
+              onLeave();
+            }}
             className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-6 text-[16px] font-semibold text-primary-foreground ${focus}`}
           >
             <LogIn aria-hidden className="size-5" /> Log in
           </Link>
           <Link
             href={SIGNUP_HREF}
-            onClick={onLeave}
+            onClick={() => {
+              trackEvent('auth_cta_click', { action: 'sign_up', source: 'predictor_limit', placement });
+              onLeave();
+            }}
             className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-border px-6 text-[16px] font-semibold text-foreground hover:bg-surface-2 ${focus}`}
           >
             <UserPlus aria-hidden className="size-5" /> Sign up free

@@ -38,6 +38,8 @@ import {
     NotebookPen,
     X
 } from 'lucide-react';
+import { Smartphone } from 'lucide-react';
+import GetAppButton from '@/components/app-download/GetAppButton';
 import { NotificationBell } from './NotificationBell';
 import { motion, AnimatePresence } from 'framer-motion';
 import type { User, ViewState } from '@/types';
@@ -448,8 +450,36 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                 {/* Divider */}
                 <div className="w-10 mx-auto h-px bg-primary/10 flex-shrink-0" />
 
-                {/* Bottom actions — profile */}
+                {/* Bottom actions — get the app, profile */}
                 <div className="flex flex-col items-center gap-1 py-3 px-1 flex-shrink-0">
+                    {/* Get the app (students; hidden inside the Android app itself). */}
+                    {!isTeacher && (
+                        <div className="relative w-full group/getapp">
+                            <GetAppButton
+                                placement="app_rail"
+                                className={cn(
+                                    'flex w-full rounded-xl text-slate-400 hover:text-primary hover:bg-primary/5 transition-all',
+                                    expanded ? 'flex-row items-center gap-3 py-2.5 px-3' : 'flex-col items-center gap-0.5 py-2.5 px-1',
+                                )}
+                            >
+                                <Smartphone aria-hidden className="w-5 h-5 shrink-0" />
+                                <span className={cn('font-bold', expanded ? 'text-sm flex-1 text-left' : 'text-[9px] leading-none')}>
+                                    {expanded ? 'Get the app' : 'Get app'}
+                                </span>
+                            </GetAppButton>
+                            {!expanded && (
+                            <div className="absolute left-[72px] top-1/2 -translate-y-1/2 pointer-events-none z-[60] flex items-center">
+                                <div className={cn(
+                                    'flex items-center h-9 rounded-r-xl bg-[hsl(var(--neu-bg))] backdrop-blur-xl',
+                                    'border border-l-0 border-primary/20 shadow-lg overflow-hidden',
+                                    'w-0 group-hover/getapp:w-28 transition-all duration-200 ease-out'
+                                )}>
+                                    <span className="whitespace-nowrap text-xs font-bold text-foreground px-3">Get the app</span>
+                                </div>
+                            </div>
+                            )}
+                        </div>
+                    )}
                     {/* Avatar / Profile */}
                     <div className="relative w-full group/profile" ref={profileMenuRef}>
                         <button
@@ -697,6 +727,25 @@ export default function Navbar({ user, currentView, onNavigate, onPrefetch, onLo
                                         );
                                     })}
                             </div>
+
+                            {/* Get the app (Android → Play Store; iPhone → coming soon). Hidden in the app shell. */}
+                            {!isTeacher && (
+                                <div className="px-4 pb-3">
+                                    <GetAppButton
+                                        placement="app_more"
+                                        className="flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-surface-2 p-3 text-left text-foreground"
+                                    >
+                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+                                            <Smartphone aria-hidden className="h-5 w-5" />
+                                        </span>
+                                        <span className="min-w-0 flex-1">
+                                            <span className="block text-sm font-bold">Get the app</span>
+                                            <span className="block text-[12px] text-muted-foreground">Android on Google Play · iOS coming soon</span>
+                                        </span>
+                                        <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
+                                    </GetAppButton>
+                                </div>
+                            )}
 
                             {premiumEnabled && !hasActiveSubjects && (
                                 <div className="px-4 pb-3">
