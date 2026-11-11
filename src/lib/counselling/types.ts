@@ -192,7 +192,10 @@ export type CounsellingResultRow = {
   rankBasis: RankBasis;
   /** Which of the student's ranks was compared (e.g. "JEE Main category rank"). */
   rankUsedLabel: string;
+  /** Middle of the range (the number "Likely" compares). */
   rankUsed: number;
+  /** The student's range for this rank (low = high when typed). */
+  rankUsedRange: RankRange;
   finalClosing: number;
   finalClosingPrep: boolean;
   rounds: RoundClosing[];

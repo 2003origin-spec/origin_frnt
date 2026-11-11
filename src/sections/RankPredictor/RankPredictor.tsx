@@ -29,6 +29,7 @@ import LimitSheet from './LimitSheet';
 import { freeChecksLine, LOGIN_HREF } from './login-links';
 import { savePending, takePending } from './pending';
 import ResultCard from './ResultCard';
+import { handoffFromPrediction, saveHandoff } from '@/sections/CollegeFinder/handoff';
 
 export type ShiftOption = { id: string; date: string; shift: number };
 
@@ -62,10 +63,13 @@ export default function RankPredictor({
   initialExam,
   shiftOptions,
   initialAttemptId,
+  collegesEnabled = false,
 }: {
   initialExam: RankPredictorExam;
   shiftOptions: ShiftOption[];
   initialAttemptId: string | null;
+  /** College finder live (plan §11): the result card links to it. */
+  collegesEnabled?: boolean;
 }) {
   const ids = useId();
   // Seeded from the server render, and it also recovers a session client-side
@@ -567,6 +571,8 @@ export default function RankPredictor({
             onWhatIf={setWhatIfDelta}
             signedIn={signedIn}
             onLoginForColleges={() => keepForLogin(true)}
+            collegesEnabled={collegesEnabled}
+            onOpenColleges={() => saveHandoff(handoffFromPrediction(result.prediction, { category, pwd, homeState }))}
           />
         ) : (
           <p className="rounded-[18px] bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">{DISCLAIMER}</p>

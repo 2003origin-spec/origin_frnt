@@ -49,11 +49,14 @@ export default async function RankPredictorPage({ searchParams }: PageProps) {
   const mode = user?.studyMode ?? null;
   const initialExam: RankPredictorExam = mode === 'jee' ? 'jee-main' : 'neet';
 
+  const collegesEnabled = await isFeatureEnabledRuntime('collegeCounselling');
+
   return (
     <RankPredictor
       initialExam={isExamPresetId(initialExam) ? initialExam : 'neet'}
       shiftOptions={rankPredictorShiftOptions()}
       initialAttemptId={attemptId}
+      collegesEnabled={collegesEnabled}
     />
   );
 }

@@ -384,10 +384,12 @@ test("T4.15 Redis down → fails open on the memory fallback, still predicts and
   }
 });
 
-test("T4.17 route policy: /rank-predictor public, /rank-predictor/colleges authenticated, API public", () => {
+test("T4.17 route policy: /rank-predictor public, API public (colleges page: public preview since Stage 6)", () => {
   assert.equal(getAppRoutePolicy("/rank-predictor").kind, "public");
   assert.equal(getAppRoutePolicy("/rank-predictor/").kind, "public");
-  assert.equal(getAppRoutePolicy("/rank-predictor/colleges").kind, "authenticated");
+  // Stage 6 (plan §11, Q9): logged-out visitors see a preview + log in; the counselling API stays signed-in only.
+  assert.equal(getAppRoutePolicy("/rank-predictor/colleges").kind, "public");
+  assert.equal(getApiRoutePolicy("/api/assessments/counselling/search").kind, "authenticated");
   assert.equal(getApiRoutePolicy("/api/public/rank-predictor").kind, "public");
 });
 

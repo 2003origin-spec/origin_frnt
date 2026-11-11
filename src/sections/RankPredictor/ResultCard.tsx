@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, Info, LogIn } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, GraduationCap, Info, LogIn } from 'lucide-react';
 
 import {
   NOT_ENOUGH_DATA,
@@ -76,6 +76,8 @@ export default function ResultCard({
   onWhatIf,
   signedIn,
   onLoginForColleges,
+  collegesEnabled = false,
+  onOpenColleges,
 }: {
   response: PredictionResponse;
   examLabel: string;
@@ -84,6 +86,10 @@ export default function ResultCard({
   signedIn: boolean;
   /** Visitors: keep the form before going to log in. */
   onLoginForColleges: () => void;
+  /** College finder live (rankPredictor + collegeCounselling flags). Off → the old "coming soon" text. */
+  collegesEnabled?: boolean;
+  /** Signed-in: hand the ranges to the finder before the link navigates. */
+  onOpenColleges?: () => void;
 }) {
   const p = response.prediction;
   const airTitle = rankListTitle(p.exam);
@@ -234,7 +240,15 @@ export default function ResultCard({
         </div>
       </details>
 
-      {signedIn ? (
+      {signedIn && collegesEnabled ? (
+        <Link
+          href="/rank-predictor/colleges"
+          onClick={onOpenColleges}
+          className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-primary px-5 text-[15px] font-semibold text-primary-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        >
+          <GraduationCap aria-hidden className="size-5" /> See colleges for this rank
+        </Link>
+      ) : signedIn ? (
         <p className="flex items-start gap-2 rounded-[12px] bg-surface-2 px-4 py-3 text-[13px] text-muted-foreground">
           <Info aria-hidden className="mt-0.5 size-4 shrink-0" />
           <span>College finder for this rank is coming soon.</span>
@@ -248,7 +262,9 @@ export default function ResultCard({
           >
             <LogIn aria-hidden className="size-4" /> Log in to see colleges you could get
           </Link>
-          <span className="text-center text-[13px] text-muted-foreground">The college finder is coming soon, free with an Origin account.</span>
+          <span className="text-center text-[13px] text-muted-foreground">
+            {collegesEnabled ? 'The college finder is free with an Origin account.' : 'The college finder is coming soon, free with an Origin account.'}
+          </span>
         </div>
       )}
 

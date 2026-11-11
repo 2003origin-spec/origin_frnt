@@ -2,7 +2,7 @@
  * Display text for the college finder (plan §11.4, §12.2). Client-safe.
  */
 
-import type { ChanceBand, CounsellingBody, CounsellingCategory, InstituteType } from "./types";
+import type { ChanceBand, CounsellingBody, CounsellingCategory, CounsellingResultRow, InstituteType } from "./types";
 
 export const BODY_LABEL: Record<CounsellingBody, string> = {
   josaa: "JoSAA",
@@ -77,4 +77,11 @@ const NUMBER = new Intl.NumberFormat("en-IN");
 
 export function formatRank(n: number, prep = false): string {
   return `${NUMBER.format(n)}${prep ? " P" : ""}`;
+}
+
+/** Women's seats are checked first, then gender-neutral (plan §11.2): the row's pool. */
+export function genderPoolLabel(row: Pick<CounsellingResultRow, "femaleOnly" | "body">): string {
+  if (!row.femaleOnly) return "Gender-neutral";
+  // "Supernumerary" is JoSAA / CSAB wording; state lists just reserve seats for women.
+  return row.body === "josaa" || row.body.startsWith("csab") ? "Female-only (incl. supernumerary)" : "Women only";
 }

@@ -385,6 +385,7 @@ export function matchCells(cells: readonly CellRound[], input: MatchInput, histo
       rankBasis: first.rankBasis,
       rankUsedLabel: choice.label,
       rankUsed: rank,
+      rankUsedRange: choice.range,
       finalClosing: summary.final,
       finalClosingPrep: summary.finalPrep,
       rounds: summary.rounds,
@@ -416,9 +417,4 @@ export function sortRows(rows: CounsellingResultRow[], sort: "competitive" | "cl
     }
     return a.key.localeCompare(b.key);
   });
-}
-
-/** Women's seats checked first, then gender-neutral (plan §11.2): a label for the row. */
-export function genderPoolLabel(row: Pick<CounsellingResultRow, "femaleOnly">): string {
-  return row.femaleOnly ? "Female-only (incl. supernumerary)" : "Gender-neutral";
 }
