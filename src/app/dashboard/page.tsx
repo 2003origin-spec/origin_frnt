@@ -10,6 +10,7 @@ import { getRegistrationStatus } from '@/server/users';
 import { getContestStatus, type ContestStatus } from '@/server/contest/contest-status';
 import { recordDailyLoginStreak, type StreakTouchResult } from '@/server/streak-login';
 import { isFeatureEnabled } from '@/lib/feature-flags';
+import { isFeatureEnabledRuntime } from '@/server/feature-flags-runtime';
 import { getResumeChapter } from '@/server/ogcode-progress';
 import { istDateKey } from '@/lib/ist-day';
 import type { Task } from '@/types';
@@ -50,7 +51,7 @@ async function DashboardGate() {
   // load of the day). Gated dark until the overlay UI ships.
   const streakEnabled = isFeatureEnabled('loginStreakCelebration');
 
-  const [tasksResult, pointsResult, challengeResult, regResult, contestResult, streakResult, resumeResult] = await Promise.allSettled([
+  const [tasksResult, pointsResult, challengeResult, regResult, contestResult, streakResult, resumeResult, rankPredictorResult, collegeCounsellingResult] = await Promise.allSettled([
     listTasksForRender(user.id),
     getPointsSummaryForRender(user.id),
     getChallengeOfTheDayForRender(istDateKey(), user.id),
@@ -60,6 +61,10 @@ async function DashboardGate() {
     // Continue Learning. allSettled, like its neighbours: a dashboard must not
     // fail to render because one derived card could not be computed.
     getResumeChapter(user.id),
+    // Home entry to the Rank Predictor. Runtime read, so the /admin/incidents
+    // kill switch hides it too. A failed read counts as off.
+    isFeatureEnabledRuntime('rankPredictor'),
+    isFeatureEnabledRuntime('collegeCounselling'),
   ]);
 
   if (tasksResult.status === 'fulfilled') {
@@ -93,6 +98,8 @@ async function DashboardGate() {
       initialContest={initialContest}
       initialStreakCelebration={initialStreakCelebration}
       initialResume={initialResume}
+      rankPredictorEnabled={rankPredictorResult.status === 'fulfilled' && rankPredictorResult.value}
+      collegeCounsellingEnabled={collegeCounsellingResult.status === 'fulfilled' && collegeCounsellingResult.value}
     />
   );
 }
