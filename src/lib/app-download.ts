@@ -3,13 +3,23 @@
  * the nav button does there. Pure, so the decision is unit-tested.
  *
  * - android  → open the Play Store listing straight away
- * - ios      → "iOS app coming soon", with the Play link to copy or share
- * - desktop  → small dialog with the Android link and "iOS: coming soon"
+ * - ios      → the "Get the Origin app" dialog on its iOS tab ("coming soon")
+ * - desktop  → the same dialog on its Android tab (QR code, Google Play link)
  * - in-app   → already inside our Android app: hide the button
  */
 
 /** Checked live on 11/11/2026: 200, "Origin – Apps on Google Play". */
 export const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.o3origin.app";
+
+/**
+ * Static QR for the Play listing (no QR library in the bundle). Generated once
+ * with qrcode@1.5.4 (error correction Q, quiet zone 4) and decoded back with
+ * jsQR to exactly this URL (SEO_APP_DOWNLOAD_NOTES.md). If PLAY_STORE_URL ever
+ * changes, regenerate the SVG and update this constant; a unit test fails until
+ * the three agree.
+ */
+export const PLAY_STORE_QR_SRC = "/app/play-store-qr.svg";
+export const PLAY_STORE_QR_ENCODED_URL = "https://play.google.com/store/apps/details?id=com.o3origin.app";
 
 export type AppDevice = "android" | "ios" | "desktop" | "in-app";
 
@@ -37,6 +47,7 @@ export function detectAppDevice({ userAgent, maxTouchPoints = 0, nativeShell = f
 }
 
 export type AppDownloadAction = "play_store" | "ios_sheet" | "desktop_sheet" | "hidden";
+// ios_sheet / desktop_sheet: which tab the dialog opens on (iOS / Android).
 
 export function appDownloadAction(device: AppDevice): AppDownloadAction {
   switch (device) {

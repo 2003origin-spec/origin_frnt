@@ -19,7 +19,9 @@ export type CounsellingExamParam = "jee" | "neet";
 /** Where a Rank Predictor action happened. */
 export type PredictorPlacement = "page" | "landing";
 export type AppPlatform = "android" | "ios" | "desktop";
-export type AppPlacement = "landing_nav" | "landing_menu" | "app_rail" | "app_more";
+export type AppPlacement = "landing_nav" | "landing_menu" | "landing_section" | "landing_pill" | "app_rail" | "app_more";
+/** open_sheet = dialog opened, tab_* = tab switched, play_store = store opened, copy_link / share. */
+export type AppDownloadClick = "play_store" | "open_sheet" | "tab_android" | "tab_ios" | "copy_link" | "share";
 /** Strings, not booleans: GA4 event params are strings or numbers. */
 export type YesNo = "yes" | "no";
 
@@ -43,7 +45,7 @@ export type AnalyticsEventMap = {
   college_finder_search: { exam: CounsellingExamParam };
   /** "See colleges for this rank" on a prediction result. */
   college_finder_handoff: { exam: AnalyticsExam; signed_in: YesNo };
-  app_download_click: { platform: AppPlatform; placement: AppPlacement; action: "play_store" | "open_sheet" | "copy_link" | "share" };
+  app_download_click: { platform: AppPlatform; placement: AppPlacement; action: AppDownloadClick };
 };
 
 export type AnalyticsEventName = keyof AnalyticsEventMap;

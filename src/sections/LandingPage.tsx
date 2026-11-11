@@ -44,6 +44,8 @@ import {
   Smartphone,
 } from 'lucide-react';
 import GetAppButton from '@/components/app-download/GetAppButton';
+import AppDownloadSection from '@/components/app-download/AppDownloadSection';
+import AppDownloadPill from '@/components/app-download/AppDownloadPill';
 import { EXAM_PAGE_LIST } from '@/lib/seo/rank-predictor-seo';
 import LandingCTABtn from '@/components/landing/LandingCTABtn';
 import RankPredictorChip from '@/components/landing/RankPredictorChip';
@@ -299,9 +301,11 @@ interface LandingPageProps {
   onGetStarted: () => void;
   /** `rankPredictor` flag, resolved on the server (runtime kill switch included). */
   rankPredictorEnabled?: boolean;
+  /** Request came from our Android app shell (server UA check): no "get the app" section or pill. */
+  inAppShell?: boolean;
 }
 
-export default function LandingPage({ onGetStarted, rankPredictorEnabled = false }: LandingPageProps) {
+export default function LandingPage({ onGetStarted, rankPredictorEnabled = false, inAppShell = false }: LandingPageProps) {
   const heroRef = useRef<HTMLDivElement>(null);
   const [mascotState, setMascotState] = useState<MascotState>('idle');
   const { theme, setTheme, resolvedTheme } = useTheme();
@@ -1078,6 +1082,9 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
           </div>
         </section>
 
+        {/* Get Origin on your phone — real app screen + store actions */}
+        {inAppShell ? null : <AppDownloadSection />}
+
         {/* Footer */}
         <footer className="py-10 relative z-10 border-t border-border/20 neu-surface">
           <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center md:items-end justify-between gap-8">
@@ -1143,6 +1150,9 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Floating "Get the app / Scan to download" (tablet/desktop; bottom-left, clear of Play with Ori) */}
+        {inAppShell ? null : <AppDownloadPill />}
 
         {/* ── Play with Ori — direct 3D interaction (tablet/desktop only) ────── */}
         {mounted && show3DMascot && (

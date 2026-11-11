@@ -74,3 +74,15 @@ test("optional params left undefined are not sent", () => {
   trackEvent("auth_cta_click", { action: "log_in", source: "college_teaser", placement: undefined });
   assert.deepEqual(sent, [{ action: "log_in", source: "college_teaser" }]);
 });
+
+test("app-download events: the new placements and actions pass, still with no personal data", () => {
+  const sent: AnalyticsParams[] = [];
+  const trackEvent = createEventTracker((_e, p) => sent.push(p));
+  for (const placement of ["landing_section", "landing_pill", "landing_nav", "app_more"] as const) {
+    for (const action of ["open_sheet", "tab_android", "tab_ios", "play_store", "copy_link"] as const) {
+      trackEvent("app_download_click", { platform: "desktop", placement, action });
+    }
+  }
+  assert.equal(sent.length, 20);
+  for (const p of sent) assert.deepEqual(Object.keys(p).sort(), ["action", "placement", "platform"]);
+});

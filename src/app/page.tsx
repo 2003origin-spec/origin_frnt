@@ -1,8 +1,10 @@
 // Server Component — auth check + redirect logic live in _client.tsx and proxy.ts
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 
 import { isFeatureEnabled } from '@/lib/feature-flags';
 import { getIncidentStateNonBlocking } from '@/server/incidents';
+import { parseAppVersionFromUserAgent } from '@/native/is-native-app';
 import HomeClient from './_client';
 
 const HOME_TITLE = 'ORIGIN AI - Best Preparation Platform for JEE/NEET';
@@ -50,5 +52,8 @@ export default async function HomePage() {
   // already rendered per request (the root layout reads the session cookie), so
   // this changes no caching.
   const rankPredictorEnabled = (await predictorFlags()).predictor;
-  return <HomeClient rankPredictorEnabled={rankPredictorEnabled} />;
+  // Inside our Android app shell (UA marker OriginApp/…): no "get the app" section or pill,
+  // decided on the server so nothing renders and then disappears.
+  const inAppShell = parseAppVersionFromUserAgent((await headers()).get('user-agent')) !== null;
+  return <HomeClient rankPredictorEnabled={rankPredictorEnabled} inAppShell={inAppShell} />;
 }
