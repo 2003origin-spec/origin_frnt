@@ -10,7 +10,7 @@
 
 import { safeNext } from "./safe-next";
 
-const LOGIN_RETURN_PATHS: readonly string[] = ["/rank-predictor"];
+const LOGIN_RETURN_PATHS: readonly string[] = ["/rank-predictor", "/rank-predictor/colleges"];
 
 /** The allowed return path from a raw `next` value, or null. */
 export function loginReturnPath(rawNext: string | null | undefined): string | null {

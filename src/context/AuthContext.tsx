@@ -125,7 +125,7 @@ const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
 // opens it from an email, logged in to Origin or not (V1/ORIGIN_NOW_PLAN.md).
 // '/rank-predictor' is the public Rank Predictor (2 free checks a day for
 // visitors, V1/PERCENTILE_PREDICTOR_PLAN.md §8); the page itself 404s while its flag is off.
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor'];
+const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor', '/rank-predictor/colleges'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;

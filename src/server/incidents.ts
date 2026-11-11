@@ -433,6 +433,9 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // Killing `rankPredictor` refuses (503) the prediction endpoint and the
   // signed-in "fill from my tests" reads. Nothing else lives under these.
   rankPredictor: ["/api/public/rank-predictor", "/api/assessments/rank-predictor"],
+  // Killing `collegeCounselling` refuses (503) the college finder's search and
+  // meta reads. Nothing else lives under this prefix.
+  collegeCounselling: ["/api/assessments/counselling"],
 };
 
 /**
