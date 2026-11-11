@@ -28,7 +28,7 @@ import { fetchAccess, fetchAttemptFill, friendlyError, PredictorError, requestPr
 import FillFromTests from './FillFromTests';
 import { buildPredictInput, marksTotal } from './form';
 import LimitSheet from './LimitSheet';
-import { freeChecksLine, LOGIN_HREF } from './login-links';
+import { freeChecksLine, loginHrefFor, signupHrefFor } from './login-links';
 import { savePending, takePending } from './pending';
 import ResultCard from './ResultCard';
 import { handoffFromPrediction, saveHandoff } from '@/sections/CollegeFinder/handoff';
@@ -68,6 +68,7 @@ export default function RankPredictor({
   collegesEnabled = false,
   heading = 'Rank Predictor',
   intro = 'Your marks in, a rank range out — from past years\u2019 official results.',
+  returnPath = '/rank-predictor',
   children,
 }: {
   initialExam: RankPredictorExam;
@@ -78,10 +79,13 @@ export default function RankPredictor({
   /** Exam entry pages (/rank-predictor/neet …) set their own h1 and line. */
   heading?: string;
   intro?: string;
+  /** This page's path: login and sign-up links come back here (exam pages pass theirs). */
+  returnPath?: string;
   /** Server-rendered "about" and FAQ blocks, shown under the tool. */
   children?: React.ReactNode;
 }) {
   const ids = useId();
+  const loginHref = loginHrefFor(returnPath);
   // Seeded from the server render, and it also recovers a session client-side
   // (expired access token + valid refresh cookie), so it decides who is signed in.
   const { user: authUser, refreshUser } = useAuth();
@@ -303,7 +307,7 @@ export default function RankPredictor({
             <ArrowLeft aria-hidden className="size-4" /> Origin home
           </Link>
           <Link
-            href={LOGIN_HREF}
+            href={loginHref}
             onClick={() => {
               trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_page', placement: 'page' });
               keepForLogin(false);
@@ -551,7 +555,7 @@ export default function RankPredictor({
                 <>
                   <span aria-hidden>·</span>
                   <Link
-                    href={LOGIN_HREF}
+                    href={loginHref}
                     onClick={() => {
                       trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_page', placement: 'page' });
                       keepForLogin(false);
@@ -611,7 +615,7 @@ export default function RankPredictor({
       {canFill ? <FillFromTests open={sheetOpen} onOpenChange={setSheetOpen} exam={exam} onFill={applyFill} /> : null}
       {children}
 
-      {!signedIn ? <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => keepForLogin(true)} returnFocusTo={submitRef} placement="page" /> : null}
+      {!signedIn ? <LimitSheet open={limitOpen} onOpenChange={setLimitOpen} onLeave={() => keepForLogin(true)} returnFocusTo={submitRef} placement="page" loginHref={loginHref} signupHref={signupHrefFor(returnPath)} /> : null}
     </main>
   );
 }

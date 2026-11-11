@@ -27,7 +27,12 @@ export default function LimitSheet({
   onLeave,
   returnFocusTo,
   placement,
+  loginHref = LOGIN_HREF,
+  signupHref = SIGNUP_HREF,
 }: {
+  /** Exam pages pass their own links so login comes back to the same page. */
+  loginHref?: string;
+  signupHref?: string;
   /** GA: where the limit was hit (page or landing widget). */
   placement: PredictorPlacement;
   open: boolean;
@@ -62,7 +67,7 @@ export default function LimitSheet({
         <div className="flex flex-col gap-3">
           <Link
             ref={loginRef}
-            href={LOGIN_HREF}
+            href={loginHref}
             onClick={() => {
               trackEvent('auth_cta_click', { action: 'log_in', source: 'predictor_limit', placement });
               onLeave();
@@ -72,7 +77,7 @@ export default function LimitSheet({
             <LogIn aria-hidden className="size-5" /> Log in
           </Link>
           <Link
-            href={SIGNUP_HREF}
+            href={signupHref}
             onClick={() => {
               trackEvent('auth_cta_click', { action: 'sign_up', source: 'predictor_limit', placement });
               onLeave();

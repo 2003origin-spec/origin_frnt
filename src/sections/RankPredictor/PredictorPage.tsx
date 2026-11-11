@@ -80,6 +80,7 @@ export default function PredictorPage({
         collegesEnabled={collegesEnabled}
         heading={examPage?.heading}
         intro={examPage?.intro}
+        returnPath={path}
       >
         <AboutBlocks examPage={examPage} faq={faq} collegesEnabled={collegesEnabled} />
       </RankPredictor>
