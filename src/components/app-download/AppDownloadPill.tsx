@@ -81,7 +81,9 @@ export default function AppDownloadPill() {
           <QrCode className="size-5" />
         </span>
         <span className="flex flex-col leading-tight">
-          <span className="text-[14px] font-bold">Get the app</span>
+          <span className="text-[14px] font-bold">
+            Get the app <span className="ml-1 rounded-full bg-primary/15 px-1.5 py-0.5 text-[11px] font-semibold text-primary">Free</span>
+          </span>
           {/* An Android tablet goes straight to Google Play; everyone else gets the QR. */}
           <span className="text-[12px] text-muted-foreground">{device === 'android' ? 'Open Google Play' : 'Scan to download'}</span>
         </span>
