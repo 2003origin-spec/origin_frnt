@@ -157,6 +157,15 @@ test("state seat codes: Maharashtra (W) seats are women-only; unknown codes are 
   assert.deepEqual(matchSeatType("state_mh", "OPEN (W)", "general"), { kind: "open", femaleOnly: true, stateList: true });
   assert.deepEqual(matchSeatType("state_mh", "SEBC", "obc-ncl"), null);
   assert.equal(matchSeatType("state_rj", "OB", "obc-ncl"), null);
+  // Tamil Nadu: OC = open seats (for every category); community lists other than SC/ST are not guessed.
+  assert.deepEqual(matchSeatType("state_tn", "OC", "general"), { kind: "open", femaleOnly: false, stateList: true });
+  assert.deepEqual(matchSeatType("state_tn", "OC", "sc"), { kind: "open", femaleOnly: false, stateList: true });
+  assert.equal(matchSeatType("state_tn", "BC", "obc-ncl"), null);
+  assert.equal(matchSeatType("state_tn", "SCA", "sc"), null);
+  assert.deepEqual(seatTypesFor("state_tn", "general"), ["OC"]);
+  // Karnataka: 2026 SC sub-group codes (S1G…S4G) are not matched until the finder asks for the sub-group.
+  assert.equal(matchSeatType("state_ka", "S1G", "sc"), null);
+  assert.equal(matchSeatType("state_ka", "OPN", "general"), null);
   assert.ok(seatTypesFor("state_mh", "sc").includes("SC (W)"));
   const mh = cellsFrom(fixtureRows("state-mh-2026.csv"));
   const out = matchCells(mh, input({ ranks: { neetAir: r(40000) }, homeState: "Maharashtra" }));
