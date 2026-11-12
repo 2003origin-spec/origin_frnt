@@ -8,6 +8,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { pickSource } from "@/lib/counselling/import-plan";
+
 import { CSV_COLUMNS, bodyFromFileName, parseCounsellingCsv, parseCsv, validateCsvRecord } from "../../../src/lib/counselling/csv";
 import { buildImportPlan, isoFromDmy } from "../../../src/lib/counselling/import-plan";
 import { instituteInfo, mccInstituteName, programParts, shortProgram } from "../../../src/lib/counselling/names";
@@ -164,4 +166,21 @@ test("CSV parser: quotes, escaped quotes, CRLF, BOM", () => {
     ["a", "b, c", 'd "e"'],
     ["1", "2", "3"],
   ]);
+});
+
+test("pickSource: the round's own file, else a span that holds the round, else the CSV's first source", () => {
+  const f = (rawFile: string) => ({ rawFile, url: `https://x.example/${rawFile.split("/").pop()}` });
+  const ka = [f("state/karnataka/2026-kea-r1-allotment-rows.csv"), f("state/karnataka/2026-kea-r8-special-stray-allotment-rows.csv"), f("state/karnataka/2026-kea-r10-x.csv")];
+  assert.equal(pickSource(ka, 1), ka[0], "r1 is not r10");
+  assert.equal(pickSource(ka, 8), ka[1]);
+  assert.equal(pickSource(ka, 10), ka[2]);
+  assert.equal(pickSource(ka, 5), ka[0], "no file for round 5: the first source");
+  const gj = [f("state/gujarat/2026-gj-general-merit-list-round3-state-merit-air-score.csv"), f("state/gujarat/2026-gj-round1-5-last-merit-no-by-institute-category.csv")];
+  assert.equal(pickSource(gj, 3), gj[0], "a file named for the round wins");
+  assert.equal(pickSource(gj, 1), gj[1]);
+  assert.equal(pickSource(gj, 5), gj[1], "round 5 sits inside round1-5");
+  assert.equal(pickSource(gj, 9), gj[0]);
+  const up = [f("state/uttar-pradesh/2026-up-institute-wise-allotted-round1-3-air.csv")];
+  assert.equal(pickSource(up, 2), up[0]);
+  assert.deepEqual(pickSource([], 1), {});
 });
