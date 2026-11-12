@@ -62,7 +62,13 @@ const MCC_CATEGORY_SEAT: Record<CounsellingCategory, string | null> = {
  * are left out rather than guessed.
  */
 const STATE_SEATS: Partial<Record<CounsellingBody, { open: string[]; byCategory: Partial<Record<CounsellingCategory, string[]>> }>> = {
-  state_ka: { open: ["GM"], byCategory: { sc: ["SCG"], st: ["STG"] } },
+  // Karnataka (KEA). GM = general merit, government-fee seats. GMP and OPN are the
+  // private-college "P" seats (KEA's fee table: Govt (G) / Private (P) / Other (Q) / NRI (N)),
+  // shown with a fee note. SC: 2025 printed one code (SCG); from 2026 KEA prints four SC
+  // groups (S1G…S4G) and no legend, so all four are shown with a note that only the
+  // student's own group applies. Rural (R), Kannada-medium (K), Kalyana-Karnataka (H) and
+  // Karnataka's own backward-class groups (1, 2A, 2B, 3A, 3B) are not matched.
+  state_ka: { open: ["GM", "GMP", "OPN"], byCategory: { sc: ["SCG", "S1G", "S2G", "S3G", "S4G"], st: ["STG"] } },
   // TN lists print the candidate's community, not the seat's. OC candidates can
   // only hold open seats, so the OC cell is a safe (never too generous) open closing.
   state_tn: { open: ["OC"], byCategory: { sc: ["SC"], st: ["ST"] } },
@@ -74,6 +80,20 @@ const STATE_SEATS: Partial<Record<CounsellingBody, { open: string[]; byCategory:
   state_br: { open: ["UR"], byCategory: { sc: ["SC"], st: ["ST"], ews: ["EWS"] } },
   state_od: { open: ["OP"], byCategory: { sc: ["SC"], st: ["ST"] } },
 };
+
+const KA_PRIVATE_SEAT_NOTE = "Private-college seat at the private (P) fee, which is higher than the government-seat fee. Check the fee and who can take it with KEA.";
+
+/** A note for seat types that need a word of care (shown on the result row), or null. */
+export function seatNote(body: CounsellingBody, seatType: string): string | null {
+  if (body !== "state_ka") return null;
+  const seat = seatType.trim();
+  if (seat === "GMP" || seat === "OPN") return KA_PRIVATE_SEAT_NOTE;
+  const group = /^S([1-4])G$/u.exec(seat);
+  if (group) {
+    return `From 2026 Karnataka splits SC seats into four groups (S1 to S4). This row is group S${group[1]}: it counts for you only if your caste certificate is in that group.`;
+  }
+  return null;
+}
 
 /** How this seat type is open to the student, or null when it is not. */
 export function matchSeatType(body: CounsellingBody, seatType: string, category: CounsellingCategory): SeatMatch | null {
@@ -426,6 +446,8 @@ export function matchCells(cells: readonly CellRound[], input: MatchInput, histo
     const derived = list.find((r) => r.derived !== "official")?.derived ?? "official";
     if (DERIVED_NOTE[derived]) notes.push(DERIVED_NOTE[derived]);
     if (seat.stateList && seat.kind === "category") notes.push("State category lists can differ from the central list: check your state certificate.");
+    const care = seatNote(first.body, first.seatType);
+    if (care) notes.push(care);
     const femaleOnly = first.gender === "female" || seat.femaleOnly;
     const series = history.get(seriesKey(first)) ?? [];
     rows.push({

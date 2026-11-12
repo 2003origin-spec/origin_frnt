@@ -16,6 +16,7 @@ import {
   matchSeatType,
   openedInRound,
   quotaEligible,
+  seatNote,
   seatTypesFor,
   sortRows,
   summariseCell,
@@ -163,9 +164,31 @@ test("state seat codes: Maharashtra (W) seats are women-only; unknown codes are 
   assert.equal(matchSeatType("state_tn", "BC", "obc-ncl"), null);
   assert.equal(matchSeatType("state_tn", "SCA", "sc"), null);
   assert.deepEqual(seatTypesFor("state_tn", "general"), ["OC"]);
-  // Karnataka: 2026 SC sub-group codes (S1G…S4G) are not matched until the finder asks for the sub-group.
-  assert.equal(matchSeatType("state_ka", "S1G", "sc"), null);
-  assert.equal(matchSeatType("state_ka", "OPN", "general"), null);
+  // Karnataka: the private-college "P" seats (GMP, OPN) are open seats; the four 2026 SC groups are SC seats.
+  for (const code of ["GM", "GMP", "OPN"]) {
+    assert.deepEqual(matchSeatType("state_ka", code, "general"), { kind: "open", femaleOnly: false, stateList: true }, code);
+    assert.deepEqual(matchSeatType("state_ka", code, "sc"), { kind: "open", femaleOnly: false, stateList: true }, `${code} for SC`);
+  }
+  for (const code of ["SCG", "S1G", "S2G", "S3G", "S4G"]) {
+    assert.deepEqual(matchSeatType("state_ka", code, "sc"), { kind: "category", femaleOnly: false, stateList: true }, code);
+    assert.equal(matchSeatType("state_ka", code, "general"), null, `${code} is not for a general student`);
+    assert.equal(matchSeatType("state_ka", code, "st"), null, `${code} is not for an ST student`);
+  }
+  // Rural, Kannada-medium, Kalyana-Karnataka and Karnataka's own backward-class groups stay out.
+  for (const code of ["GMR", "GMK", "GMH", "GMPH", "S1R", "S2K", "S3H", "SCR", "2AG", "3BG", "1G", "OTH", "NRI"]) {
+    assert.equal(matchSeatType("state_ka", code, "sc"), null, code);
+    assert.equal(matchSeatType("state_ka", code, "obc-ncl"), null, code);
+  }
+  assert.deepEqual(seatTypesFor("state_ka", "general"), ["GM", "GMP", "OPN"]);
+  assert.deepEqual(seatTypesFor("state_ka", "sc"), ["GM", "GMP", "OPN", "SCG", "S1G", "S2G", "S3G", "S4G"]);
+  assert.deepEqual(seatTypesFor("state_ka", "st"), ["GM", "GMP", "OPN", "STG"]);
+  // Rows that need a word of care carry it.
+  assert.match(seatNote("state_ka", "GMP") ?? "", /private \(P\) fee/);
+  assert.match(seatNote("state_ka", "OPN") ?? "", /private \(P\) fee/);
+  assert.match(seatNote("state_ka", "S3G") ?? "", /group S3: it counts for you only if your caste certificate is in that group/);
+  for (const [body, code] of [["state_ka", "GM"], ["state_ka", "SCG"], ["state_ka", "STG"], ["state_tn", "OC"], ["mcc_ug", "Open"], ["state_mh", "OPN"]] as const) {
+    assert.equal(seatNote(body, code), null, `${body} ${code}`);
+  }
   assert.ok(seatTypesFor("state_mh", "sc").includes("SC (W)"));
   const mh = cellsFrom(fixtureRows("state-mh-2026.csv"));
   const out = matchCells(mh, input({ ranks: { neetAir: r(40000) }, homeState: "Maharashtra" }));
