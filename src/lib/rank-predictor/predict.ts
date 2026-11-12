@@ -232,8 +232,9 @@ export function neetCategoryRankRange(years: readonly NeetYear[], category: Rank
  * The proportional state-rank method (AIR × state share of appeared). NOT used
  * for output — the product shows "not available" for states without a list —
  * kept and tested to document its error (Karnataka, AIR 10,000: real 549 vs
- * ≈ 644). NTA's state table includes a "Total" row, so shares are normalised
- * over the real states (the file's raw shares are half the true value).
+ * ≈ 644). Shares are each state's true share of appeared. Guard: they are
+ * still normalised over the states and any "Total" row is skipped, so an
+ * older data file (which counted NTA's Total row as a state) gives the same answer.
  */
 export function neetProportionalStateRank(year: NeetYear, state: string, air: number): { rank: number; quality: Quality } | null {
   const shares = year.stateShare?.shares;

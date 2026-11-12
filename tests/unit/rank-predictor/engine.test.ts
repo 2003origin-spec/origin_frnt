@@ -429,3 +429,30 @@ test("Data parity: EXAM_SUBJECTS matches each data file's subjects", () => {
     }
   }
 });
+
+test("Data shape: NEET stateShare has real states only (no NTA \"Total\" row) and true shares", () => {
+  const withShares = neet.years.filter((y) => y.stateShare);
+  assert.ok(withShares.length >= 3, "2024–2026 carry a stateShare block");
+  for (const y of withShares) {
+    const { appearedTotal, shares } = y.stateShare!;
+    const totalLike = Object.keys(shares).filter((k) => /total/i.test(k));
+    assert.deepEqual(totalLike, [], `${y.year}: a "Total" row is not a state`);
+    const sum = Object.values(shares).reduce((acc, v) => acc + v, 0);
+    near(sum, 1, 1e-4, `${y.year}: shares add up to 1`);
+    // The state table's own total (2024 differs from the highlights figure by 135).
+    within(appearedTotal, y.appeared, 0.001, `${y.year}: appearedTotal is the appeared count, not twice it`);
+  }
+});
+
+test("NEET proportional state rank: an old file with a \"Total\" row and halved shares gives the same answer", () => {
+  for (const y of neet.years.filter((entry) => entry.stateShare)) {
+    const { appearedTotal, shares } = y.stateShare!;
+    const halved = Object.fromEntries(Object.entries(shares).map(([k, v]) => [k, v / 2]));
+    const old: typeof y = { ...y, stateShare: { appearedTotal: appearedTotal * 2, shares: { ...halved, Total: 0.5 } } };
+    for (const state of ["Karnataka", "Kerala", "Ladakh", "Andaman and Nicobar Islands"]) {
+      for (const air of [1, 10000, 250000, 2000000]) {
+        assert.deepEqual(neetProportionalStateRank(old, state, air), neetProportionalStateRank(y, state, air), `${y.year} ${state} ${air}`);
+      }
+    }
+  }
+});

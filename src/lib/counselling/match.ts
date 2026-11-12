@@ -63,7 +63,9 @@ const MCC_CATEGORY_SEAT: Record<CounsellingCategory, string | null> = {
  */
 const STATE_SEATS: Partial<Record<CounsellingBody, { open: string[]; byCategory: Partial<Record<CounsellingCategory, string[]>> }>> = {
   state_ka: { open: ["GM"], byCategory: { sc: ["SCG"], st: ["STG"] } },
-  state_tn: { open: [], byCategory: { sc: ["SC"], st: ["ST"] } },
+  // TN lists print the candidate's community, not the seat's. OC candidates can
+  // only hold open seats, so the OC cell is a safe (never too generous) open closing.
+  state_tn: { open: ["OC"], byCategory: { sc: ["SC"], st: ["ST"] } },
   state_up: { open: ["UR"], byCategory: { "obc-ncl": ["BC"], sc: ["SC"], st: ["ST"], ews: ["EW"] } },
   state_mh: { open: ["OPEN"], byCategory: { "obc-ncl": ["OBC"], sc: ["SC"], st: ["ST"], ews: ["EWS"] } },
   state_rj: { open: ["UR"], byCategory: { sc: ["SC"], st: ["ST"] } },

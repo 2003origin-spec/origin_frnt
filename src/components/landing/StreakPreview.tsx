@@ -240,7 +240,7 @@ export default function StreakPreview() {
             </div>
           </motion.div>
 
-          {/* Right: heatmap — dark card matching RankPredictor */}
+          {/* Right: heatmap — dark card */}
           <motion.div
             initial={{ opacity: 0, x: 24 }}
             whileInView={{ opacity: 1, x: 0 }}

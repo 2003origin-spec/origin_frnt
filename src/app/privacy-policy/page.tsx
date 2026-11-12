@@ -443,6 +443,12 @@ export default function PrivacyPolicyPage() {
                     analyse platform usage. You may disable cookies through your browser settings, but this may affect
                     certain platform features.
                   </p>
+                  <p>
+                    If you use the Rank Predictor without logging in, it sets one functional cookie named{' '}
+                    <strong>rp_did</strong>. It holds only a random device id and no personal data. We use it only to count
+                    your free rank checks each day and to stop too many checks in a short time. It lasts up to 1 year, and
+                    your browser sends it only to the Rank Predictor. We do not set it when you are logged in.
+                  </p>
                 </div>
               </section>
 
