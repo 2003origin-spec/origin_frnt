@@ -5,7 +5,10 @@
  *   POST  run a prediction. Signed in: unlimited (60/min burst). Logged out:
  *         2 distinct checks per IST day per device (plan §8.3), then 429
  *         `login_required`.
- *   GET   how many free checks this device has left today (never uses one).
+ *   GET   how many free checks this device has left today (never uses one),
+ *         plus `jeeMainShifts`: the JEE Main shifts with real tables (static
+ *         data, same list the web form gets from its server render) so API
+ *         clients such as the app can offer the same optional shift picker.
  *
  * Public at the edge (PUBLIC_API_PATHS) and CSRF-exempt like every
  * /api/public/* route: a visitor has no session or CSRF cookie. The only state
@@ -33,6 +36,7 @@ import { extractRefreshTokenCookie, resolveTokenToUser } from "@/server/auth";
 import { isAuthServiceUnavailableError } from "@/server/auth-errors";
 import { isFeatureEnabledRuntime } from "@/server/feature-flags-runtime";
 import { json } from "@/server/http";
+import { rankPredictorShiftOptions } from "@/server/rank-predictor/data";
 import { rankPredictorShiftIds, runPrediction, whatIfBands } from "@/server/rank-predictor/predictor-service";
 import {
   chargeFreeCheck,
@@ -214,10 +218,21 @@ export async function POST(request: NextRequest) {
   return reply(200, parsed.honeypot ? decoyBody(parsed.input, access) : predictionBody(parsed.input, access), setCookie);
 }
 
+/**
+ * The JEE Main shift options for the GET body: `{ id, date (dd/mm/yyyy), shift }`.
+ * Static, public data (no per-user content); the ids are the ones POST accepts
+ * as `jeeMainShift`. Built once per server instance.
+ */
+let shiftOptions: ReturnType<typeof rankPredictorShiftOptions> | null = null;
+function jeeMainShifts() {
+  shiftOptions ??= rankPredictorShiftOptions();
+  return shiftOptions;
+}
+
 export async function GET(request: NextRequest) {
   const who = await gate(request);
   if (who instanceof Response) return who;
-  if (who.kind === "user") return reply(200, { access: SIGNED_IN });
+  if (who.kind === "user") return reply(200, { access: SIGNED_IN, jeeMainShifts: jeeMainShifts() });
 
   const key = limitKey();
   if (!(await isWithinLimit(rankPredictorStatusLimiter, hashIp(clientIp(request), key)))) return reply(429, SLOW_DOWN);
@@ -228,5 +243,5 @@ export async function GET(request: NextRequest) {
   } catch {
     // The store already fails open; a read that still throws shows the full allowance.
   }
-  return reply(200, { access: visitor(remaining) });
+  return reply(200, { access: visitor(remaining), jeeMainShifts: jeeMainShifts() });
 }

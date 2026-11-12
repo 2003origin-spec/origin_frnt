@@ -462,13 +462,49 @@ test("expired access token + refresh cookie → 401 session_refresh (no check us
   assert.equal(anon.body.access.remainingToday, 1);
 });
 
+test("GET lists the JEE Main shifts (same list as the web form) for visitors and signed-in users", async () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { rankPredictorShiftOptions } = require("@/server/rank-predictor/data") as typeof import("@/server/rank-predictor/data");
+  const pageList = rankPredictorShiftOptions();
+  assert.ok(pageList.length > 0, "the 2024 shift tables are bundled");
+
+  const callGet = (headers: Record<string, string>) =>
+    GET(new Request("http://localhost/api/public/rank-predictor", { headers: { "x-forwarded-for": freshIp(), ...headers } }) as never);
+
+  const callers: Record<string, string>[] = [{}, { authorization: "Bearer valid-token" }, { cookie: "origin_access_token=valid-token" }];
+  for (const headers of callers) {
+    const res = await callGet(headers);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get("cache-control"), "no-store", "cache headers unchanged");
+    assert.equal(res.headers.get("set-cookie"), null, "GET still sets no cookie");
+    const body = (await res.json()) as Json;
+    assert.deepEqual(Object.keys(body).sort(), ["access", "jeeMainShifts"]);
+    assert.deepEqual(body.jeeMainShifts, pageList);
+    for (const s of body.jeeMainShifts) {
+      assert.deepEqual(Object.keys(s).sort(), ["date", "id", "shift"]);
+      assert.match(s.date, /^\d{2}\/\d{2}\/\d{4}$/, "dd/mm/yyyy");
+      assert.ok(Number.isInteger(s.shift) && s.shift >= 1);
+    }
+  }
+  // The visitor's access part is exactly what it was before the list was added.
+  assert.deepEqual(((await callGet({}).then((r) => r.json())) as Json).access, { signedIn: false, remainingToday: 2, limit: 2 });
+
+  // Every listed id is one POST accepts as jeeMainShift.
+  const c = client();
+  c.headers = { authorization: "Bearer valid-token" };
+  for (const s of pageList) {
+    const r = await post(c, { exam: "jee-main", marks: { maths: 60, physics: 60, chemistry: 60 }, category: "general", pwd: false, jeeMainShift: s.id });
+    assert.equal(r.status, 200, `shift ${s.id} accepted`);
+  }
+});
+
 test("flag off → POST and GET answer 404 feature_off", async () => {
   flagOn = false;
   try {
     const c = client();
     for (const r of [await post(c, neet(240)), await status(c)]) {
       assert.equal(r.status, 404);
-      assert.equal(r.body.code, "feature_off");
+      assert.deepEqual(r.body, { code: "feature_off", detail: "Not found." }, "no shift list while the feature is off");
     }
   } finally {
     flagOn = true;
