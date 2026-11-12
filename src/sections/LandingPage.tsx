@@ -16,7 +16,6 @@ const OriginLogoBackground = dynamic(() => import('@/components/ui/OriginLogoBac
 const OriMascot = dynamic(() => import('@/features/mascot/OriMascot'), { ssr: false });
 import type { MascotState } from '@/features/mascot/mascot-state';
 const TryOriginAI = dynamic(() => import('@/components/landing/TryOriginAI'), { ssr: false });
-const RankPredictor = dynamic(() => import('@/components/landing/RankPredictor'), { ssr: false });
 // Real predictor (plan §9.2), shown only while the `rankPredictor` flag is on.
 // The placeholder keeps the anchor and the space, so /#rank-predictor still lands.
 const RankPredictorWidget = dynamic(() => import('@/components/landing/RankPredictorWidget'), {
@@ -876,13 +875,6 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
         <div data-mascot-state="thinking" data-mascot-side="left">
           <ManifestoReveal onBeginJourney={handleBeginJourney} />
         </div>
-
-        {/* Rank Predictor — immediately after manifesto (old slider, flag off) */}
-        {rankPredictorEnabled ? null : (
-          <div className="relative z-10" data-mascot-state="curious" data-mascot-side="right">
-            <RankPredictor />
-          </div>
-        )}
 
         {/* Features Section - Responsive: Rotating cards on desktop, grid on mobile */}
         <section id="features" data-mascot-state="curious" data-mascot-side="left" className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-x-hidden">
