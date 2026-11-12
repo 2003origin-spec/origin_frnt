@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 
 import { compactChips, dialFraction, sourcesLine } from "@/components/landing/rank-predictor-widget-model";
+import { mockPreviewText } from "@/lib/rank-predictor/format";
 import type { Prediction, RankBand } from "@/lib/rank-predictor/types";
 import { hashInput } from "@/server/rank-predictor/public-limit";
 import { buildPredictInput, marksTotal, type PredictForm } from "@/sections/RankPredictor/form";
@@ -156,4 +157,21 @@ test("data line: unique publishers, at most two named, date as given (dd/mm/yyyy
     sourcesLine([{ publisher: "NTA" }, { publisher: "KEA" }, { publisher: "MCC" }, { publisher: "TN DME" }], "11/11/2026"),
     "Data: NTA · KEA and 2 more · checked 11/11/2026",
   );
+});
+
+test("mock result line: rank in short form, with the percentile where the exam has one", () => {
+  assert.deepEqual(mockPreviewText("neet", { air: band(48_200, 56_400), percentile: { low: 97.1, high: 98.4 } }), {
+    rank: "AIR 48k–56k",
+    percentile: "97.10 – 98.40",
+  });
+  assert.deepEqual(mockPreviewText("jee-main", { air: band(7_909, 49_610), percentile: { low: 96.98, high: 99.52 } }), {
+    rank: "AIR 8k–50k",
+    percentile: "96.98 – 99.52",
+  });
+  // One value, not a range.
+  assert.equal(mockPreviewText("neet", { air: band(900, 900), percentile: { low: 99.9, high: 99.9 } }).percentile, "99.90");
+  // JEE Advanced has no percentile (the server sends null); an older API answer has no field at all.
+  assert.deepEqual(mockPreviewText("jee-advanced", { air: band(2_051, 2_401), percentile: null }), { rank: "CRL 2k", percentile: null });
+  assert.equal(mockPreviewText("neet", { air: band(1_50_000, 2_30_000) }).percentile, null);
+  assert.equal(mockPreviewText("neet", { air: band(1_50_000, 2_30_000) }).rank, "AIR 1.5 lakh–2.3 lakh");
 });

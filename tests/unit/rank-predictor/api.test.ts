@@ -166,6 +166,8 @@ test("T3.5 NEET full mock with botany + zoology → Biology = sum, out of 360", 
   assert.equal(fill.marks.biology.value, 270);
   assert.equal(fill.marks.physics.value, 120);
   assert.ok(fill.preview.air.low >= 1, "full mock carries the one-line preview");
+  const pct = fill.preview.percentile;
+  assert.ok(pct && pct.low > 0 && pct.low <= pct.high && pct.high <= 100, "…with the NEET percentile range next to the rank");
 });
 
 test("T3.6 subject_stats camelCase (totalMarks) and snake_case (total_marks) both read", async () => {

@@ -97,6 +97,23 @@ export function formatPercentileRange(range: NumberRange): string {
   return `${f(range.low)} – ${f(range.high)}`;
 }
 
+/**
+ * The words of the one-line mock preview (plan §9.3): the rank as "AIR 48k–56k"
+ * (CRL for JEE Advanced) and, where the exam has one, the percentile range.
+ * An older API answer without `percentile` simply shows no percentile.
+ */
+export function mockPreviewText(
+  exam: RankPredictorExam,
+  preview: { air: NumberRange; percentile?: NumberRange | null },
+): { rank: string; percentile: string | null } {
+  const { air, percentile } = preview;
+  const what = exam === "jee-advanced" ? "CRL" : "AIR";
+  const low = shortRank(air.low);
+  const high = shortRank(air.high);
+  // 2,051 and 2,401 are both "2k": say it once.
+  return { rank: `${what} ${low === high ? low : `${low}–${high}`}`, percentile: percentile ? formatPercentileRange(percentile) : null };
+}
+
 /** Screen-reader sentence, e.g. "All India rank between 48,000 and 56,000, good estimate" (T5.3). */
 export function spokenRange(what: string, range: NumberRange, quality: Quality): string {
   const q = QUALITY_LABEL[quality].toLowerCase();
