@@ -147,3 +147,22 @@ export function isoFromDmy(dmy: string | null | undefined): string | null {
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/u.exec(dmy ?? "");
   return m ? `${m[3]}-${m[2]}-${m[1]}` : null;
 }
+
+/** One raw source of a clean CSV, as written in counselling/sources.json. */
+export type SourceEntry = { url?: string; publisher?: string; official?: boolean; fetchedOn?: string; rawFile?: string };
+
+/**
+ * The raw file one round's dataset came from: a file named for that round
+ * ("round2", "r2"), else one named for a span that holds it ("round1-5"), else
+ * the CSV's first source.
+ */
+export function pickSource(entries: readonly SourceEntry[], round: number): SourceEntry {
+  const name = (e: SourceEntry) => (e.rawFile ?? "").split("/").pop() ?? "";
+  const roundHit = entries.find((e) => new RegExp(`(?:round|r)${round}(?!\\d)`, "u").test(name(e)));
+  if (roundHit) return roundHit;
+  const spanHit = entries.find((e) => {
+    const m = /(?:round|r)(\d{1,2})-(\d{1,2})(?!\d)/u.exec(name(e));
+    return m ? Number(m[1]) <= round && round <= Number(m[2]) : false;
+  });
+  return spanHit ?? entries[0] ?? {};
+}

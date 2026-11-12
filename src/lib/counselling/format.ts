@@ -22,7 +22,7 @@ export const BODY_LABEL: Record<CounsellingBody, string> = {
 
 /** Known gaps, shown next to the body (DATA_NOTES "Counselling — states"). */
 export const BODY_DATA_NOTE: Partial<Record<CounsellingBody, string>> = {
-  state_ka: "2025 and 2026, every KEA round, MBBS and BDS; closing ranks are worked out from KEA's allotment lists. Only general merit, SC (2025 only) and ST seats are matched; rural, Kannada-medium and other special seats are left out.",
+  state_ka: "2025 and 2026, every KEA round, MBBS and BDS; closing ranks are worked out from KEA's allotment lists. General merit, private-college (GMP, OPN), SC and ST seats are shown. From 2026 SC seats are split into four groups (S1 to S4): all four are shown, and only your own group counts for you. Rural, Kannada-medium, Kalyana-Karnataka and Karnataka's own backward-class seats are left out.",
   state_tn: "Government quota only; ranks are Tamil Nadu state ranks. 2025 has rounds 1 to 3 only (the stray-round list is no longer published).",
   state_mp: "Round 1 was not published; round 2 and mop-up only.",
   state_gj: "Colleges show by the short names Gujarat uses.",

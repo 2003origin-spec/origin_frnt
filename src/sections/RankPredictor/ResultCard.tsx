@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, ExternalLink, GraduationCap, Info, LogIn } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, ChevronDown, CircleDot, GraduationCap, Info, LogIn } from 'lucide-react';
 
 import {
   NOT_ENOUGH_DATA,
@@ -13,6 +13,7 @@ import {
   rankListTitle,
   spokenRange,
 } from '@/lib/rank-predictor/format';
+import { PublicDataAck, SourcesSection } from '@/components/rank-predictor/PublicSources';
 import type { Quality, RankBand } from '@/lib/rank-predictor/types';
 
 import type { PredictionResponse } from './api';
@@ -137,6 +138,7 @@ export default function ResultCard({
             Percentile <span className="font-semibold tabular-nums">{formatPercentileRange(p.percentile)}</span>
           </p>
         ) : null}
+        <PublicDataAck />
       </div>
 
       {/* Category / PwD / state */}
@@ -270,25 +272,10 @@ export default function ResultCard({
 
       {/* Sources + checked date + disclaimer: always under every result (T5.6) */}
       <footer className="flex flex-col gap-2 border-t border-border pt-3 text-[13px] leading-relaxed text-muted-foreground">
-        <p>
-          <span className="font-semibold text-foreground">Data: </span>
-          {response.sources.map((s, i) => (
-            <span key={`${s.publisher}-${s.url}`}>
-              {i > 0 ? ' · ' : ''}
-              <a
-                href={s.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-12 items-center gap-0.5 underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
-              >
-                {s.publisher}
-                {s.official ? ' (official)' : ' (anchor points)'}
-                <ExternalLink aria-hidden className="size-3" />
-              </a>
-            </span>
-          ))}{' '}
-          · checked {response.checkedOn}
-        </p>
+        <SourcesSection
+          groups={response.sources.map((src) => ({ label: `${src.publisher}${src.official ? ' (official)' : ' (anchor points)'}`, links: [src] }))}
+          checkedOn={response.checkedOn}
+        />
         <p>{response.disclaimer}</p>
       </footer>
     </section>

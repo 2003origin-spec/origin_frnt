@@ -15,6 +15,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import Link from 'next/link';
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Info, Loader2, RotateCcw, Search } from 'lucide-react';
 
+import { PublicDataAck, SourcesSection } from '@/components/rank-predictor/PublicSources';
 import { trackEvent } from '@/lib/analytics';
 import { INDIAN_STATES } from '@/lib/constants';
 import { STATE_BODY_BY_STATE } from '@/lib/counselling/states';
@@ -287,6 +288,7 @@ export default function CollegeFinder({ initialExam }: { initialExam: Counsellin
           <span className="rounded-full bg-primary/15 px-2.5 py-1 text-[12px] font-semibold uppercase tracking-wide text-foreground">Free</span>
         </div>
         <p className="text-[14px] text-muted-foreground">Which colleges your rank would have got in past years, round by round.</p>
+        <PublicDataAck />
       </header>
 
       <div role="tablist" aria-label="Exam" className="grid grid-cols-2 gap-1 rounded-full bg-surface-2 p-1">
@@ -721,26 +723,10 @@ export default function CollegeFinder({ initialExam }: { initialExam: Counsellin
       {/* Sources, data date, disclaimer and official links: always on the page (plan §11.4, §12.2). */}
       <footer className="flex flex-col gap-2 rounded-[18px] bg-surface-2 px-4 py-3 text-[13px] leading-relaxed text-muted-foreground">
         <p className="font-semibold text-foreground">{meta?.disclaimer ?? 'Based on last year’s closing ranks; this year will differ.'}</p>
-        {shownSources.length ? (
-          <p>
-            <span className="font-semibold text-foreground">Data: </span>
-            {shownSources.map((b, i) => (
-              <span key={b.body}>
-                {i > 0 ? ' · ' : ''}
-                <a
-                  href={b.sources[0].url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline underline-offset-2 hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
-                >
-                  {b.label}
-                  {b.sources[0].official ? ' (official)' : ''}
-                </a>
-              </span>
-            ))}
-            {meta?.checkedOn ? ` · checked ${meta.checkedOn}` : ''}
-          </p>
-        ) : null}
+        <SourcesSection
+          groups={shownSources.map((b) => ({ key: b.body, label: b.label, links: b.sources }))}
+          checkedOn={meta?.checkedOn}
+        />
         <p className="flex flex-wrap items-center gap-x-3">
           <span>Official sites:</span>
           {(meta?.officialLinks ?? []).map((l) => (

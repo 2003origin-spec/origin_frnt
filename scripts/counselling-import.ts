@@ -24,12 +24,12 @@
  */
 
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 
 import pg from "pg";
 
 import { bodyFromFileName, parseCounsellingCsv } from "../src/lib/counselling/csv";
-import { buildImportPlan, isoFromDmy, type PlannedDataset } from "../src/lib/counselling/import-plan";
+import { buildImportPlan, isoFromDmy, pickSource, type PlannedDataset, type SourceEntry } from "../src/lib/counselling/import-plan";
 import { COUNSELLING_BODIES, type CounsellingBody, type CutoffRow } from "../src/lib/counselling/types";
 import { COUNSELLING_MIGRATION_ID, COUNSELLING_MIGRATION_NAME, COUNSELLING_SCHEMA_DDL } from "../src/server/counselling/schema-ddl";
 import { SCHEMA_DDL_LOCK_ID } from "../src/server/schema-lock";
@@ -94,7 +94,6 @@ function parseArgs(argv: readonly string[]): Args {
   return args;
 }
 
-type SourceEntry = { url?: string; publisher?: string; official?: boolean; fetchedOn?: string; rawFile?: string };
 
 function loadSources(dir: string): Record<string, SourceEntry[]> {
   const file = join(dir, "sources.json");
@@ -183,20 +182,43 @@ async function main() {
     const instituteIds = await upsertInstitutes(client, plan, args.all);
     const programIds = await upsertPrograms(client, plan, instituteIds);
 
-    const existing = await client.query<{ body: string; year: number; round: number; sha256: string; id: number }>(
-      "SELECT id, body, year, round, sha256 FROM counselling.datasets",
-    );
+    const existing = await client.query<{
+      body: string;
+      year: number;
+      round: number;
+      sha256: string;
+      id: number;
+      source_url: string | null;
+      publisher: string | null;
+      official: boolean;
+      fetched_on: string | null;
+    }>("SELECT id, body, year, round, sha256, source_url, publisher, official, fetched_on::text AS fetched_on FROM counselling.datasets");
     const known = new Map(existing.rows.map((r) => [`${r.body}|${r.year}|${r.round}`, r]));
     let written = 0;
     let unchanged = 0;
+    let resourced = 0;
     for (const ds of plan.datasets) {
       const key = `${ds.body}|${ds.year}|${ds.round}`;
       const prev = known.get(key);
+      const src = pickSource(sources[fileOf.get(key) ?? ""] ?? [], ds.round);
       if (prev && prev.sha256 === ds.sha256 && !args.replace) {
         unchanged += 1;
+        // Same seat rows, but the source on record may have been corrected in sources.json:
+        // update the four source fields only (no seat row is touched).
+        const next = { url: src.url ?? null, publisher: src.publisher ?? null, official: src.official ?? true, fetchedOn: isoFromDmy(src.fetchedOn) };
+        if (prev.source_url !== next.url || prev.publisher !== next.publisher || prev.official !== next.official || (prev.fetched_on ?? null) !== (next.fetchedOn ?? null)) {
+          await client.query("UPDATE counselling.datasets SET source_url = $2, publisher = $3, official = $4, fetched_on = $5 WHERE id = $1", [
+            prev.id,
+            next.url,
+            next.publisher,
+            next.official,
+            next.fetchedOn,
+          ]);
+          resourced += 1;
+          console.log(`  source corrected: ${ds.body} ${ds.year} round ${ds.round}`);
+        }
         continue;
       }
-      const src = pickSource(sources[fileOf.get(key) ?? ""] ?? [], ds);
       await writeDataset(client, ds, src, programIds);
       written += 1;
     }
@@ -223,7 +245,7 @@ async function main() {
       );
       if (orphans.rows[0].n || orphanInstitutes.rows[0].n) console.log(`  removed ${orphans.rows[0].n} unused programs, ${orphanInstitutes.rows[0].n} unused institutes`);
     }
-    console.log(`\nDatasets written: ${written}, unchanged (skipped): ${unchanged}, removed (no longer in the CSVs): ${pruned}.`);
+    console.log(`\nDatasets written: ${written}, unchanged (skipped): ${unchanged}, of those with the source corrected: ${resourced}, removed (no longer in the CSVs): ${pruned}.`);
     const counts = await client.query<{ body: string; year: number; n: string }>(
       `SELECT d.body, d.year, count(c.*)::text AS n
          FROM counselling.datasets d LEFT JOIN counselling.cutoffs c ON c.dataset_id = d.id
@@ -245,11 +267,6 @@ function printFileTotals(datasets: PlannedDataset[], fileOf: Map<string, string>
   }
   console.log("\nPer file: CSV rows read / rejected / seat cells imported");
   for (const r of report) console.log(`  ${r.file.padEnd(20)} ${String(r.read).padStart(7)} ${String(r.rejected).padStart(5)} ${String(imported.get(r.file) ?? 0).padStart(7)}`);
-}
-
-function pickSource(entries: SourceEntry[], ds: PlannedDataset): SourceEntry {
-  const roundHit = entries.find((e) => e.rawFile && new RegExp(`(round|r)${ds.round}\\b`, "u").test(basename(e.rawFile)));
-  return roundHit ?? entries[0] ?? {};
 }
 
 async function ensureSchema(client: pg.Client) {
