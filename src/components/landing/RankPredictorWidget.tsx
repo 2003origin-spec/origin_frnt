@@ -21,7 +21,7 @@ import { useAuth } from '@/context/AuthContext';
 import { trackEvent } from '@/lib/analytics';
 import { yesNo } from '@/lib/analytics-events';
 import { INDIAN_STATES } from '@/lib/constants';
-import { DISCLAIMER, EXAM_LABEL, NOT_ENOUGH_DATA, NOT_ON_RANK_LIST, QUALITY_LABEL, categoryLabel, formatRankRange, rankListTitle, spokenRange } from '@/lib/rank-predictor/format';
+import { DISCLAIMER, EXAM_LABEL, NOT_ENOUGH_DATA, NOT_ON_RANK_LIST, QUALITY_LABEL, categoryLabel, formatPercentileRange, formatRankRange, rankListTitle, spokenRange } from '@/lib/rank-predictor/format';
 import { EXAM_MAX_MARKS, EXAM_SUBJECTS } from '@/lib/rank-predictor/subjects';
 import { FREE_CHECKS_PER_DAY, RANK_CATEGORIES, RANK_PREDICTOR_EXAMS, type Quality, type RankCategory, type RankPredictorExam } from '@/lib/rank-predictor/types';
 import { fetchAccess, friendlyError, PredictorError, requestPrediction, type Access, type PredictionResponse } from '@/sections/RankPredictor/api';
@@ -458,6 +458,11 @@ export default function RankPredictorWidget() {
                       ) : (
                         <p className="text-[15px] text-white">{NOT_ON_RANK_LIST}</p>
                       )}
+                      {p.percentile ? (
+                        <p className="text-[14px] text-white/85">
+                          Percentile <span className="font-semibold tabular-nums text-white">{formatPercentileRange(p.percentile)}</span>
+                        </p>
+                      ) : null}
                     </div>
                     <ul className="grid gap-2 sm:grid-cols-2" aria-label="Other ranks">
                       {compactChips(p).map((chip) => (

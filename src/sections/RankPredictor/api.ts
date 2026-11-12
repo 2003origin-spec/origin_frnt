@@ -10,7 +10,7 @@
 
 import { apiCall, attemptTokenRefresh, resolveApiBaseUrl } from "@/lib/api";
 import type { AttemptFill, AttemptSummary } from "@/lib/rank-predictor/attempt-mapping";
-import type { Access, Prediction, PredictInput, RankBand, RankPredictorExam } from "@/lib/rank-predictor/types";
+import type { Access, PercentileBand, Prediction, PredictInput, RankBand, RankPredictorExam } from "@/lib/rank-predictor/types";
 import type { WhatIfBand } from "@/lib/rank-predictor/what-if";
 
 export type { Access };
@@ -24,7 +24,9 @@ export type PredictionResponse = {
   access: Access;
 };
 
-export type AttemptFillResponse = AttemptFill & { preview?: { air: RankBand | null; topText: string | null } | null };
+export type AttemptFillResponse = AttemptFill & {
+  preview?: { air: RankBand | null; percentile?: PercentileBand | null; topText: string | null } | null;
+};
 
 /** A failed call, with the server's machine-readable code (and `access` on a 429). */
 export class PredictorError extends Error {

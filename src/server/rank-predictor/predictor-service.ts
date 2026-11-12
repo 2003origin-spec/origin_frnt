@@ -19,7 +19,7 @@ import {
 } from "@/lib/rank-predictor/attempt-mapping";
 import { DISCLAIMER, roundPercentileRange, roundRankRange } from "@/lib/rank-predictor/format";
 import { jeeMainShiftIds, predict } from "@/lib/rank-predictor/predict";
-import type { DataSource, PredictInput, Prediction, RankBand, RankPredictorExam } from "@/lib/rank-predictor/types";
+import type { DataSource, PercentileBand, PredictInput, Prediction, RankBand, RankPredictorExam } from "@/lib/rank-predictor/types";
 import { addMarks, WHAT_IF_DELTAS, type WhatIfBand } from "@/lib/rank-predictor/what-if";
 import { ensureAnalyticsTables } from "@/legacy/analytics-store";
 import { getOgcodePostgresPool } from "@/server/postgres";
@@ -139,8 +139,11 @@ export async function listRankPredictorAttempts(userId: string, exam: RankPredic
 }
 
 export type AttemptFillResponse = AttemptFill & {
-  /** Full-length mock of this exam only: a one-line AIR range for the result page (plan §9.3). */
-  preview: { air: RankBand | null; topText: string | null } | null;
+  /**
+   * Full-length mock of this exam only: a one-line AIR range for the result page (plan §9.3),
+   * with the percentile for NEET and JEE Main (JEE Advanced has none → null).
+   */
+  preview: { air: RankBand | null; percentile: PercentileBand | null; topText: string | null } | null;
 };
 
 function previewFor(fill: AttemptFill): AttemptFillResponse["preview"] {
@@ -153,7 +156,7 @@ function previewFor(fill: AttemptFill): AttemptFillResponse["preview"] {
     pwd: false,
     source: { kind: "attempt" },
   });
-  return { air: prediction.air, topText: prediction.topText };
+  return { air: prediction.air, percentile: prediction.percentile, topText: prediction.topText };
 }
 
 /**
