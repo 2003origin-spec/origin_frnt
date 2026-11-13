@@ -49,6 +49,13 @@ const JOB_STATUS_VALUES = [
   "all",
 ] as const;
 
+
+/** Job creation sends the job to the import worker inside `after()` and waits
+ * for its answer (the pipeline runs inside that request), so the invocation
+ * needs the long limit. Pro + Fluid compute allows 800 s. See
+ * src/server/workspaces/document-import-dispatch.ts. */
+export const maxDuration = 800;
+
 export async function GET(request: NextRequest, context: WorkspaceIdRouteContext) {
   try {
     requireFeatureEnabled("documentImport");

@@ -16,6 +16,13 @@ import { requireRole } from "@/server/authz";
 import { createContestImportJob, listContestImportJobs } from "@/server/contest/contest-import-service";
 import { MAX_IMPORT_DOCUMENT_BYTES } from "@/server/media-storage";
 
+
+/** Job creation sends the job to the import worker inside `after()` and waits
+ * for its answer (the pipeline runs inside that request), so the invocation
+ * needs the long limit. Pro + Fluid compute allows 800 s. See
+ * src/server/workspaces/document-import-dispatch.ts. */
+export const maxDuration = 800;
+
 export async function GET(request: NextRequest) {
   try {
     requireFeatureEnabled("contest");

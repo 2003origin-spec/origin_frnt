@@ -421,3 +421,86 @@ export async function deleteImportJob(
   );
   return result.rows[0] ? rowToJob(result.rows[0]) : null;
 }
+
+/**
+ * Fail a job that never reached the worker, but only while it is still
+ * `queued`: if the worker already picked it up (or a teacher deleted it), the
+ * row is left alone. Returns the updated job, or null when nothing changed.
+ * Cross-workspace by design — the caller holds the job row it created.
+ */
+export async function failQueuedImportJob(
+  jobId: string,
+  error: { code: string; message: string },
+): Promise<DocumentImportJob | null> {
+  await ensureDocumentImportSchema();
+  const result = await pool().query(
+    `UPDATE import.document_import_jobs
+        SET status = 'failed', stage = 'failed',
+            error_code = $2, error_message = $3,
+            completed_at = NOW(), updated_at = NOW()
+      WHERE id = $1 AND status = 'queued'
+      RETURNING *`,
+    [jobId, error.code, error.message],
+  );
+  return result.rows[0] ? rowToJob(result.rows[0]) : null;
+}
+
+/**
+ * Claim queued jobs whose trigger looks lost, so the cron sweep can send them
+ * to the worker again. A job qualifies when it is still `queued`, untouched for
+ * `staleAfterMinutes` (the worker flips a job to `processing` within seconds of
+ * receiving it, so a stale `queued` row was never received) and younger than
+ * `maxAgeMinutes` (older ones are expired instead — see expireQueuedImportJobs).
+ *
+ * The claim bumps `updated_at`, and `FOR UPDATE SKIP LOCKED` keeps two
+ * overlapping sweeps from claiming the same row, so each job gets at most one
+ * retry per `staleAfterMinutes`.
+ */
+export async function claimStaleQueuedImportJobs(opts: {
+  staleAfterMinutes: number;
+  maxAgeMinutes: number;
+  limit: number;
+}): Promise<DocumentImportJob[]> {
+  await ensureDocumentImportSchema();
+  const result = await pool().query(
+    `UPDATE import.document_import_jobs j
+        SET updated_at = NOW()
+       FROM (
+         SELECT id FROM import.document_import_jobs
+          WHERE status = 'queued'
+            AND updated_at < NOW() - make_interval(mins => $1::int)
+            AND created_at > NOW() - make_interval(mins => $2::int)
+          ORDER BY created_at
+          LIMIT $3
+          FOR UPDATE SKIP LOCKED
+       ) stale
+      WHERE j.id = stale.id AND j.status = 'queued'
+      RETURNING j.*`,
+    [opts.staleAfterMinutes, opts.maxAgeMinutes, opts.limit],
+  );
+  return result.rows.map(rowToJob);
+}
+
+/**
+ * Give up on jobs that stayed `queued` for `maxAgeMinutes`: mark them failed
+ * with a message the teacher can act on. This frees their concurrency slot.
+ * Returns the ids it expired.
+ */
+export async function expireQueuedImportJobs(opts: {
+  maxAgeMinutes: number;
+  code: string;
+  message: string;
+}): Promise<string[]> {
+  await ensureDocumentImportSchema();
+  const result = await pool().query(
+    `UPDATE import.document_import_jobs
+        SET status = 'failed', stage = 'failed',
+            error_code = $2, error_message = $3,
+            completed_at = NOW(), updated_at = NOW()
+      WHERE status = 'queued'
+        AND created_at <= NOW() - make_interval(mins => $1::int)
+      RETURNING id`,
+    [opts.maxAgeMinutes, opts.code, opts.message],
+  );
+  return result.rows.map((row) => row.id as string);
+}

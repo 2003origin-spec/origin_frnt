@@ -28,6 +28,7 @@ import {
   updateImportQuestionFields,
   updateQuestionStatus,
 } from "./document-import-store";
+import { scheduleImportJobDispatch } from "./document-import-dispatch";
 import { createDocumentImportJobId } from "./ids";
 import { updateQuestion } from "./questions";
 import { createTeacherQuestion } from "./questions-service";
@@ -100,9 +101,9 @@ export async function createImportJob(input: {
    * uploadToken is the presign route's HMAC over (userId, objectKey, expiry):
    * only the user the key was presigned for can register a job on it. */
   sourceR2?: { objectKey: string; sizeBytes?: number; uploadToken: string };
-  /** When true, fire-and-forget kicks off the FastAPI worker after the
-   * job row is committed. Defaults to true — set false in tests to keep
-   * the pipeline call out of the request. */
+  /** When true, the job is sent to the FastAPI worker after the response
+   * (`after()`), with the cron sweep as the retry path. Defaults to true —
+   * set false in tests to keep the worker call out of the request. */
   triggerPipeline?: boolean;
 }): Promise<DocumentImportJob> {
   // The key comes back from the browser: only accept one our presign route made,
@@ -177,41 +178,13 @@ export async function createImportJob(input: {
   });
 
   if (input.triggerPipeline !== false) {
-    // Fire-and-forget the pipeline so callers don't block on it.
-    triggerImportPipeline(job).catch((err: unknown) => {
-      // Swallowed deliberately — pipeline failures are reflected in the
-      // job row (status='failed', error_code/message set by the worker).
-      console.warn(`[document-import] pipeline trigger failed for ${job.id}:`, err);
-    });
+    // Send the job to the worker once the response is out, and keep the
+    // invocation alive until it answers (see document-import-dispatch.ts). A
+    // lost or failed hand-off leaves the job `queued` for the cron sweep.
+    scheduleImportJobDispatch(job);
   }
 
   return job;
-}
-
-/** POST /v1/import-jobs/{id}/run on the document-import-service.
- * No-op when DOCUMENT_IMPORT_SERVICE_URL isn't configured (dev env). */
-export async function triggerImportPipeline(job: DocumentImportJob): Promise<void> {
-  const baseUrl = process.env.DOCUMENT_IMPORT_SERVICE_URL?.trim();
-  const token = process.env.DOCUMENT_IMPORT_SERVICE_TOKEN?.trim();
-  if (!baseUrl || !token) return;
-
-  const requestId =
-    typeof globalThis.crypto?.randomUUID === "function"
-      ? globalThis.crypto.randomUUID()
-      : `${Date.now()}-${Math.random()}`;
-  await fetch(`${baseUrl.replace(/\/$/, "")}/v1/import-jobs/${job.id}/run`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${token}`,
-      "x-request-id": requestId,
-    },
-    body: JSON.stringify({
-      job_id: job.id,
-      requested_by: job.requestedBy,
-      workspace_id: job.workspaceId,
-    }),
-  });
 }
 
 export async function listWorkspaceImportJobs(workspaceId: string, filter?: { status?: ImportJobStatus; limit?: number }): Promise<DocumentImportJob[]> {
