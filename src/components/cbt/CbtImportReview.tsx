@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { LatexRenderer } from "@/components/ui/LatexRenderer";
+import { importJobNotice } from "@/lib/cbt/import-job-notice";
 import { mutateJson } from "@/lib/csrf";
 import type { CbtQuestion, CbtQuestionInput } from "@/lib/cbt/question-model";
 import type { ImportJobQuestion, ImportJobWithProgress } from "@/server/workspaces/types";
@@ -34,6 +35,8 @@ export function CbtImportReview({
   const [note, setNote] = useState<string | null>(null);
   // Seeds cbt.tests.settings.shuffleQuestions on the test this job creates.
   const [shuffleQuestions, setShuffleQuestions] = useState(false);
+  // Read once: tells a just-queued import apart from one waiting on the worker.
+  const [renderedAtMs] = useState(() => Date.now());
 
   function act(question: ImportJobQuestion, action: "accept" | "reject") {
     setError(null);
@@ -129,6 +132,11 @@ export function CbtImportReview({
     );
   }
 
+  const statusNotice = importJobNotice(job, {
+    hasReviewableQuestions: pendingReview.length > 0,
+    nowMs: renderedAtMs,
+  });
+
   return (
     <div className="space-y-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -174,9 +182,15 @@ export function CbtImportReview({
       {note ? <p className="text-xs text-emerald-600 dark:text-emerald-400">{note}</p> : null}
       {error ? <p className="text-xs text-destructive" role="alert">{error}</p> : null}
 
-      {job.status !== "succeeded" && job.status !== "needs_review" && pendingReview.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Extraction in progress. Refresh in a moment to review the questions.
+      {statusNotice ? (
+        // The queued-vs-waiting split reads the clock, which can differ by a
+        // moment between the server render and hydration.
+        <p
+          suppressHydrationWarning
+          role={statusNotice.tone === "error" ? "alert" : undefined}
+          className={statusNotice.tone === "error" ? "text-sm text-destructive" : "text-sm text-muted-foreground"}
+        >
+          {statusNotice.text}
         </p>
       ) : null}
 

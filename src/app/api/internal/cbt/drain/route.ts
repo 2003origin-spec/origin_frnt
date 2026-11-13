@@ -21,6 +21,11 @@
  * budget, so production converges by itself after a deploy without anyone
  * running a script. It short-circuits once complete.
  *
+ * It also sweeps document-import jobs stuck in `queued` (CBT, contest and
+ * teacher imports alike): it re-sends stale ones to the worker and fails the
+ * ones queued for 45 minutes, freeing their slots. Plan:
+ * V1/IMPORT_PIPELINE_RELIABILITY_PLAN.md.
+ *
  * Auth: INTERNAL_CRON_TOKEN or Vercel's own CRON_SECRET.
  */
 
@@ -31,9 +36,14 @@ import { sweepExpiredCbtRooms } from "@/server/cbt/cbt-attempts-service";
 import { advanceCbtResilienceBackfill } from "@/server/cbt/cbt-backfill";
 import { reconcileCbtParticipations } from "@/server/cbt/cbt-quota-service";
 import { sweepExpiredTeacherDpps } from "@/server/teacher-dpp-sweeper";
+import { sweepStuckImportJobs, type ImportSweepResult } from "@/server/workspaces/document-import-dispatch";
 import { isFeatureEnabled } from "@/lib/feature-flags";
 
 import { handleTeacherError } from "@/app/api/teacher/_utils";
+
+/** Import retries are dispatched with `after()` and wait for the worker's
+ * answer (a whole pipeline), so this route needs the long limit too. */
+export const maxDuration = 800;
 
 async function drain(request: NextRequest) {
   try {
@@ -57,8 +67,19 @@ async function drain(request: NextRequest) {
       console.error("[cbt/drain] teacher DPP expiry sweep failed", error);
     }
 
+    // Document-import jobs whose hand-off to the worker was lost. Same reasons
+    // as the DPP sweep above for living here, above the cbtModule gate and in
+    // its own try/catch: it serves CBT, contest and teacher imports, so the CBT
+    // flag must not switch it off, and a failure here must not stop the rest.
+    let imports: ImportSweepResult | null = null;
+    try {
+      imports = await sweepStuckImportJobs();
+    } catch (error) {
+      console.error("[cbt/drain] stuck import job sweep failed", error);
+    }
+
     if (!isFeatureEnabled("cbtModule")) {
-      return NextResponse.json({ ok: true, skipped: "cbt_disabled", teacherDpp });
+      return NextResponse.json({ ok: true, skipped: "cbt_disabled", teacherDpp, imports });
     }
 
     const url = new URL(request.url);
@@ -84,7 +105,7 @@ async function drain(request: NextRequest) {
       console.error("[cbt/drain] participation reconcile failed", error);
     }
 
-    return NextResponse.json({ ok: true, ...result, backfill, quota, teacherDpp });
+    return NextResponse.json({ ok: true, ...result, backfill, quota, teacherDpp, imports });
   } catch (error) {
     return handleTeacherError(error);
   }
