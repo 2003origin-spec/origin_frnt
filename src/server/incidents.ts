@@ -436,6 +436,10 @@ export const FLAG_KILL_PREFIXES: Partial<Record<FlagKey, FlagKillMatcher>> = {
   // Killing `collegeCounselling` refuses (503) the college finder's search and
   // meta reads. Nothing else lives under this prefix.
   collegeCounselling: ["/api/assessments/counselling"],
+  // Killing `studyMusic` refuses (503) every student music call from the
+  // website and the app, reads and signed links included. /api/admin/music/*
+  // stays up so founders can still upload, retire and delete tracks.
+  studyMusic: ["/api/music", "/api/mobile/music"],
 };
 
 /**

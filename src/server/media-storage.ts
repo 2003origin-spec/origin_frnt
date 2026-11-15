@@ -758,6 +758,31 @@ export async function headR2Object(input: { bucket: string; objectKey: string })
   };
 }
 
+/**
+ * The first `bytes` bytes of one object (a signed Range GET), or null when it
+ * doesn't exist. Used to check what an upload really is (magic bytes) without
+ * exporting the signer. A shorter object returns all of it. Capped at 16 MB:
+ * this reads into memory.
+ */
+export async function readR2ObjectStart(input: { bucket: string; objectKey: string; bytes: number }): Promise<Uint8Array | null> {
+  if (!Number.isSafeInteger(input.bytes) || input.bytes < 1 || input.bytes > 16 * 1024 * 1024) {
+    throw new Error("readR2ObjectStart reads 1 byte to 16 MB.");
+  }
+  const response = await signedR2Request({
+    method: "GET",
+    bucket: input.bucket,
+    objectKey: input.objectKey,
+    headers: { range: `bytes=0-${input.bytes - 1}` },
+  });
+  if (response.status === 404) return null;
+  // 416: the object is empty.
+  if (response.status === 416) return new Uint8Array(0);
+  if (!response.ok) throw new Error(`Cloudflare R2 read failed (${response.status}).`);
+  const body = new Uint8Array(await response.arrayBuffer());
+  // A server that ignores Range answers 200 with the whole object.
+  return body.length > input.bytes ? body.slice(0, input.bytes) : body;
+}
+
 /** Server-side copy of one object to the same key in another bucket (metadata kept). */
 export async function copyR2Object(input: { fromBucket: string; toBucket: string; objectKey: string }): Promise<void> {
   const copySource = canonicalObjectPath(input.fromBucket, input.objectKey).slice(1);

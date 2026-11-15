@@ -46,6 +46,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import type { User } from '@/types';
 import { apiCall } from '@/lib/api';
 import StudyMusicPlayer from '@/sections/StudyMusicPlayer';
+import { useStudyMusic } from '@/features/study-music/StudyMusicProvider';
+import { StudyMusicCard } from '@/features/study-music/StudyMusicCard';
 import { toast } from 'sonner';
 
 import type { TimeType } from '@/hooks/useTimeTracker';
@@ -120,6 +122,10 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   const [ambientVolume, setAmbientVolume] = useState(0.5);
   const audioContextRef = useRef<AudioContext | null>(null);
   const ambientNodeRef = useRef<AudioNode | null>(null);
+
+  // Study Music (V1/STUDY_MUSIC_PLAN.md §7): null while the studyMusic flag is
+  // off (or for admins) — the old Spotify card shows then.
+  const studyMusic = useStudyMusic();
 
   // Background Atmosphere
   const [showAtmosphere, setShowAtmosphere] = useState(false);
@@ -645,6 +651,18 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
   };
 
 
+  // Study Music follows the timer: a running focus block is "focus" (plays the
+  // mood when "Start music with focus" is on), a running break is "break"
+  // (holds the music when "Stop at breaks" is on). A paused timer keeps its
+  // phase; a reset or leaving the page is "idle" (a break hold is released).
+  const setMusicPhase = studyMusic?.setFocusPhase;
+  useEffect(() => {
+    if (!setMusicPhase) return;
+    if (isRunning) setMusicPhase(mode === 'focus' ? 'focus' : 'break');
+    else if (!currentSession) setMusicPhase('idle');
+  }, [setMusicPhase, isRunning, mode, currentSession]);
+  useEffect(() => () => setMusicPhase?.('idle'), [setMusicPhase]);
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -1110,12 +1128,16 @@ export default function Pomodoro({ onBack, user, setTimeMode, onNavigate: _onNav
                       <Music className="h-4 w-4" />
                     </span>
                     <div>
-                      <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground leading-none">Study Music</h3>
-                      <p className="mt-1 text-[9px] font-semibold text-muted-foreground">Lo-fi & focus playlists</p>
+                      <h3 className="text-[10px] font-black uppercase tracking-widest text-foreground leading-none">BoomBoom</h3>
+                      <p className="mt-1 text-[9px] font-semibold text-muted-foreground">
+                        {studyMusic && studyMusic.status !== 'off' ? 'Ad-free focus music' : 'Lo-fi & focus playlists'}
+                      </p>
                     </div>
                   </div>
 
-                  <StudyMusicPlayer />
+                  {/* Flag on (and music available): the new player. Off, or no tracks
+                      yet / kill switch: the old Spotify card, until Phase 5 removes it. */}
+                  {studyMusic && studyMusic.status !== 'off' ? <StudyMusicCard /> : <StudyMusicPlayer />}
                 </CardContent>
               </Card>
             </div>

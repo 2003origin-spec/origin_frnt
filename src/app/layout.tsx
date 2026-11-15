@@ -123,6 +123,8 @@ export default async function RootLayout({
   const notesEnabled = isFeatureEnabled("notes");
   // Student messaging needs Social too (same rule as the API and the app config).
   const messagingEnabled = socialEnabled && isFeatureEnabled("studentMessaging");
+  // Study Music player (V1/STUDY_MUSIC_PLAN.md §4.1): passed as a prop, never read on the client.
+  const studyMusicEnabled = isFeatureEnabled("studyMusic");
   // Pre-launch cover: server-computed so there is no flash of the real site.
   const launch = await getLaunchSettings().catch(() => null);
   const coverActive = launch ? isCoverActive(launch) : false;
@@ -151,7 +153,7 @@ export default async function RootLayout({
               <NotificationProvider>
                 <QuotaProvider>
                   <AiAccessProvider initial={{ originAi: initialAiAccess.originAi, aiExplainer: initialAiAccess.aiExplainer }}>
-                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
+                    <ClientShell connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} studyMusicEnabled={studyMusicEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShell>
                   </AiAccessProvider>
                 </QuotaProvider>
               </NotificationProvider>

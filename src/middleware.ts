@@ -13,7 +13,7 @@ import { isBearerTokenAuthorized } from "@/server/service-auth";
  * tied to this list any more: the kill-switch runs for every API request,
  * every method, before the policy branches below.
  *
- * /api/mobile/, /api/notes/ and /api/now/ are deliberately NOT here: their
+ * /api/mobile/, /api/notes/, /api/now/ and /api/music/ are deliberately NOT here: their
  * catch-all route handlers charge the same `u:<userId>` budget themselves
  * (src/server/shared-mutation-limit.ts). This middleware runs in bom1, far
  * from Upstash, and the check cost every app write a Mumbai → US round trip;

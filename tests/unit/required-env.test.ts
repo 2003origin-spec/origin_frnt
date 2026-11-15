@@ -24,8 +24,8 @@ import {
   type RequiredEnvFlags,
 } from "@/lib/required-env";
 
-const OFF: RequiredEnvFlags = { cbtModule: false, originNow: false, contest: false };
-const ALL_ON: RequiredEnvFlags = { cbtModule: true, originNow: true, contest: true };
+const OFF: RequiredEnvFlags = { cbtModule: false, originNow: false, contest: false, studyMusic: false };
+const ALL_ON: RequiredEnvFlags = { cbtModule: true, originNow: true, contest: true, studyMusic: true };
 
 const BASE = {
   AUTH_JWT_SECRET_CURRENT: "jwt",
@@ -86,7 +86,16 @@ test("flag-gated secrets are required only while their flag is on", () => {
     "CONTEST_SERVICE_TOKEN (contest on)",
     "CRON_SECRET (contest on)",
   ]);
+  assert.deepEqual(missingRequiredEnv(BASE, { ...OFF, studyMusic: true }), ["R2_PRIVATE_BUCKET (studyMusic on)"]);
   assert.deepEqual(missingRequiredEnv({ ...BASE, ...FLAGGED }, ALL_ON), []);
+});
+
+test("R2_PRIVATE_BUCKET is listed once when originNow and studyMusic are both on", () => {
+  assert.deepEqual(missingRequiredEnv(BASE, { ...OFF, originNow: true, studyMusic: true }), [
+    "NOW_KYC_ENCRYPTION_KEY (originNow on)",
+    "R2_PRIVATE_BUCKET (originNow on)",
+  ]);
+  assert.deepEqual(missingRequiredEnv({ ...BASE, R2_PRIVATE_BUCKET: "private" }, { ...OFF, studyMusic: true }), []);
 });
 
 test("a CBT secret shorter than 32 chars is reported", () => {

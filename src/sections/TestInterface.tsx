@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { shouldSubmitTestAnswer } from '@/lib/tests/time-stats';
 import { cappedSittingSeconds, earliestDeadline, windowDeadlineOnClientClock } from '@/lib/assessments/test-window';
 import { formatISTTime } from '@/lib/format-time';
+import { useTestMusicGuard } from '@/features/study-music/useTestMusicGuard';
 
 const renderQuestionText = (text: string, idPrefix: string) => {
     return <FormattedMessage content={text} isAssistant={true} className="text-slate-900 !prose-slate" />;
@@ -98,6 +99,9 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
   const [isMalpracticeTerminated, setIsMalpracticeTerminated] = useState(false);
   const malpracticeTimerRef = useRef<any>(null);
   const [isExamStarted, setIsExamStarted] = useState(false);
+  // Study Music: asks "Pause music for your test?" AFTER the test has started,
+  // and gives the music back on submit / leave / unmount (STUDY_MUSIC_PLAN.md §5).
+  const music = useTestMusicGuard(isExamStarted);
   const serverTimeRemaining = useServerAnchoredTimer(timerSource, isExamStarted);
   const effectiveTimeRemaining = timerSource ? serverTimeRemaining : timeRemaining;
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -384,6 +388,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     setExpiredDraft(null);
     setIsExamStarted(true);
     questionStartedAtRef.current = Date.now();
+    music.onTestStart(); // after the start: it can never delay the test
   };
 
   /** Expired draft → "Start fresh": discard it; the paper starts blank. */
@@ -566,6 +571,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     setIsExamStarted(true);
     questionStartedAtRef.current = Date.now();
     enterFullscreen();
+    music.onTestStart(); // after the start: it can never delay the test
   };
 
   const formatTime = (seconds: number) => {
@@ -832,6 +838,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
     setIsSubmitting(true);
+    music.onTestEnd(); // the test is over: music comes back if it was held
     const submissionToastId = toast.loading('Submitting your test... Please wait while we process your AI analytics.');
     stopCamera();
     setShowSubmitModal(false);
@@ -907,6 +914,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
 
   return (
     <div className="min-h-dvh overflow-x-hidden lg:h-dvh lg:overflow-hidden bg-white text-gray-900 font-sans text-sm selection:bg-blue-200/30 flex flex-col relative" style={{ colorScheme: 'light' }}>
+      {music.prompt}
 
 
       {/* 0. Verification Overlay */}
@@ -1220,7 +1228,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
         <div className="flex items-center justify-between w-full sm:w-auto gap-3">
           <div className="w-9 h-9 sm:w-12 sm:h-12 shrink-0 bg-green-600 rounded-full flex items-center justify-center cursor-pointer" onClick={() => {
             if (isExamStarted && !allowSubmittedNavigationRef.current) { setShowLeaveModal(true); return; }
-            stopCamera(); onExit();
+            stopCamera(); music.onTestEnd(); onExit();
           }}>
             <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-white flex items-center justify-center">
               <div className="w-4 h-4 sm:w-6 sm:h-6 bg-orange-500 rounded-tr-xl rounded-bl-xl" style={{ clipPath: 'polygon(0% 100%, 100% 100%, 100% 0%)' }}></div>
@@ -1265,6 +1273,8 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
               )}
             </div>
           )}
+          {/* Study Music: the one play / pause button, in the header's flow. */}
+          {isExamStarted && music.button}
           <div className="flex flex-col gap-0.5 sm:gap-1 text-[10px] sm:text-xs">
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Candidate:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{candidateName}</span></div>
             <div className="flex"><span className="w-20 sm:w-28 text-gray-500">Subject:</span> <span className="text-orange-500 truncate max-w-[100px] sm:max-w-none">{test.title}</span></div>
@@ -1840,6 +1850,7 @@ export default function TestInterface({ test, onComplete, onExit, timerSource, s
                   setShowLeaveModal(false);
                   allowSubmittedNavigationRef.current = true;
                   stopCamera();
+                  music.onTestEnd();
                   onExit();
                 }}
                 className="w-full py-3 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors uppercase tracking-wide"

@@ -134,6 +134,7 @@ function isMissingRelation(error: unknown): boolean {
  *    leaderboards/teacher reports stay consistent),
  *  - rooms.room_messages written by the user → deleted,
  *  - app.doubt_sessions owned by the user → deleted,
+ *  - music.listen_sessions and music.user_prefs (Study Music) → deleted,
  *  - other users' notifications ABOUT this user that embed the name / profile
  *    link ("<name> started following you", "<name> attempted the OG
  *    challenge…", "OG Challenge from <name>") → rewritten, matched on the exact
@@ -180,6 +181,11 @@ export async function purgeResidualPersonalData(
   await run("doubt sessions", () =>
     userPool.query(`DELETE FROM app.doubt_sessions WHERE user_id = $1`, [userId]),
   );
+  // Study Music: listening history and player prefs (V1/STUDY_MUSIC_PLAN.md §4.4).
+  await run("music listening history", () =>
+    userPool.query(`DELETE FROM music.listen_sessions WHERE user_id = $1`, [userId]),
+  );
+  await run("music prefs", () => userPool.query(`DELETE FROM music.user_prefs WHERE user_id = $1`, [userId]));
 
   const name = original.name?.trim() || null;
   const username = original.username?.trim() || null;

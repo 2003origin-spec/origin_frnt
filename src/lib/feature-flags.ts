@@ -72,7 +72,8 @@ type FlagKey =
   | "originNow"
   | "rankPredictor"
   | "collegeCounselling"
-  | "studentMessaging";
+  | "studentMessaging"
+  | "studyMusic";
 
 type FlagSpec = {
   envSuffix: string;
@@ -353,6 +354,12 @@ const FLAG_SPECS: Record<FlagKey, FlagSpec> = {
   // the prod migration + data import). The page also needs rankPredictor on.
   // Plan: V1/PERCENTILE_PREDICTOR_PLAN.md §7.3, §7.4, §11.
   collegeCounselling: { envSuffix: "COLLEGE_COUNSELLING", defaultDev: true, defaultProd: false },
+  // Study Music — ad-free focus music (licensed CC0 / CC BY tracks in the
+  // private R2 bucket) for students and teachers on the website and the app;
+  // replaces the Spotify link. Gates /api/music/* and /api/mobile/music/*.
+  // Ships DARK in prod until tracks are uploaded. /admin/music is NOT behind
+  // it, so founders can upload first. Plan: V1/STUDY_MUSIC_PLAN.md §4.
+  studyMusic: { envSuffix: "STUDY_MUSIC", defaultDev: true, defaultProd: false },
 };
 
 /** Every feature-flag key, in declaration order (admin System Config view). */

@@ -79,6 +79,7 @@ const APP_FLAG_KEYS = [
   "studentMessaging",
   "rankPredictor",
   "collegeCounselling",
+  "studyMusic",
 ] as const satisfies readonly FlagKey[];
 
 function appFlags(): Record<string, boolean> {

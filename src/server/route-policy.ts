@@ -104,6 +104,12 @@ export const AUTHENTICATED_API_PREFIXES = [
   // studentSocial flags and the student role are checked in the handler.
   // /api/admin/messaging/* is covered by "/api/admin".
   "/api/messages",
+  // Study Music — track list, signed play links, prefs, listening heartbeat
+  // (single catch-all, same handlers as /api/mobile/music/*). The studyMusic
+  // flag and the student / teacher role are checked in the handler; writes
+  // charge the shared mutation limiter there (HANDLER_LIMITED_MUTATION_PREFIXES).
+  // /api/admin/music/* is covered by "/api/admin". Plan: V1/STUDY_MUSIC_PLAN.md.
+  "/api/music",
 ] as const;
 
 export const MEMBERSHIP_API_PREFIXES = ["/api/study-rooms/[id]"] as const;

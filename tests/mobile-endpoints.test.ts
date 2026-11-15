@@ -28,6 +28,19 @@ test("mobile config defaults are the safe/dark posture", () => {
   assert.ok(!Number.isNaN(Date.parse(config.serverTime)));
 });
 
+test("mobile config tells the app whether Study Music is on (studyMusic flag, dark in prod)", () => {
+  const previous = process.env.TEACHER_LAUNCH_STUDY_MUSIC;
+  try {
+    process.env.TEACHER_LAUNCH_STUDY_MUSIC = "0";
+    assert.equal(buildMobileConfig().flags.studyMusic, false);
+    process.env.TEACHER_LAUNCH_STUDY_MUSIC = "1";
+    assert.equal(buildMobileConfig().flags.studyMusic, true);
+  } finally {
+    if (previous === undefined) delete process.env.TEACHER_LAUNCH_STUDY_MUSIC;
+    else process.env.TEACHER_LAUNCH_STUDY_MUSIC = previous;
+  }
+});
+
 test("mobile config reads env overrides", () => {
   process.env.MOBILE_MIN_SUPPORTED_VERSION_CODE = "10200";
   process.env.MOBILE_KILL_SWITCH = "1";
