@@ -16,6 +16,7 @@ import { track } from '@/lib/analytics';
 import { mutateJson, csrfHeaders } from '@/lib/csrf';
 import { shouldCountViolation } from '@/lib/contest/contest-state';
 import { runFinalSaveThenSubmit } from '@/lib/contest/submit-flow';
+import { useTestMusicGuard } from '@/features/study-music/useTestMusicGuard';
 
 export interface PaperQuestion {
   position: number;
@@ -52,6 +53,9 @@ const MAX_VIOLATIONS = 3;
 
 export function useContestAttempt(contestId: string) {
   const [phase, setPhase] = useState<Phase>('loading');
+  // Study Music (STUDY_MUSIC_PLAN.md §5): asks "Pause music for your test?" once
+  // the paper is open; music comes back on submit, on leaving and on unmount.
+  const { onTestStart: musicTestStart, onTestEnd: musicTestEnd, prompt: musicPrompt, button: musicButton } = useTestMusicGuard(phase === 'running');
   const [error, setError] = useState<string | null>(null);
   const [questions, setQuestions] = useState<PaperQuestion[]>([]);
   const [state, setState] = useState<AttemptState | null>(null);
@@ -289,6 +293,7 @@ export function useContestAttempt(contestId: string) {
       if (submittingRef.current) return;
       submittingRef.current = true;
       setPhase('submitting');
+      musicTestEnd();
       try {
         // Flush the last autosave FIRST (forced past the submitting guard,
         // retried on failure), then submit carrying the final draft too — the
@@ -320,7 +325,7 @@ export function useContestAttempt(contestId: string) {
         setPhase('running');
       }
     },
-    [contestId, flushSave],
+    [contestId, flushSave, musicTestEnd],
   );
   useEffect(() => {
     submitRef.current = submit;
@@ -379,11 +384,12 @@ export function useContestAttempt(contestId: string) {
       const qs = await loadPaper();
       setQuestions(qs);
       setPhase('running');
+      musicTestStart(); // after the start: it can never delay the contest
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start.');
       setPhase('error');
     }
-  }, [contestId, loadPaper]);
+  }, [contestId, loadPaper, musicTestStart]);
 
   return {
     phase,
@@ -401,5 +407,9 @@ export function useContestAttempt(contestId: string) {
     toggleMarked,
     begin,
     submit,
+    /** Render inside the running paper: the "Pause music for your test?" prompt. */
+    musicPrompt,
+    /** Render in the running paper's timer bar: the one 48 px music play / pause. */
+    musicButton,
   };
 }

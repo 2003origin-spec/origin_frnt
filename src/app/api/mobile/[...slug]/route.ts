@@ -383,3 +383,7 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 export async function PATCH(request: NextRequest, context: RouteContext) {
   return dispatch("PATCH", request, context);
 }
+// PUT /api/mobile/music/prefs (Study Music, same handler as the website's /api/music/prefs).
+export async function PUT(request: NextRequest, context: RouteContext) {
+  return dispatch("PUT", request, context);
+}

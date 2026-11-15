@@ -49,6 +49,9 @@ test("purgeResidualPersonalData anonymises room names, deletes chat + doubts, re
   assert.deepEqual(participants?.values, ["user-1"]);
   assert.deepEqual(find("rooms", /DELETE FROM rooms\.room_messages WHERE user_id = \$1/)?.values, ["user-1"]);
   assert.deepEqual(find("user", /DELETE FROM app\.doubt_sessions WHERE user_id = \$1/)?.values, ["user-1"]);
+  // Study Music: listening history and prefs.
+  assert.deepEqual(find("user", /DELETE FROM music\.listen_sessions WHERE user_id = \$1/)?.values, ["user-1"]);
+  assert.deepEqual(find("user", /DELETE FROM music\.user_prefs WHERE user_id = \$1/)?.values, ["user-1"]);
 
   // Without challenge edges only the follow rewrites run, and never on the name alone.
   const notifs = queries.filter((q) => q.pool === "user" && /UPDATE app\.notifications/.test(q.text));
@@ -87,6 +90,9 @@ test("purgeResidualPersonalData: a missing table is silent, other failures becom
   installFakePools({
     "rooms.room_messages": { code: "42P01", message: 'relation "rooms.room_messages" does not exist' },
     "app.doubt_sessions": { code: "57014", message: "statement timeout" },
+    // Study Music never used on this database: silent.
+    "music.listen_sessions": { code: "42P01", message: 'relation "music.listen_sessions" does not exist' },
+    "music.user_prefs": { code: "42P01", message: 'relation "music.user_prefs" does not exist' },
   });
   const warnings: string[] = [];
   await purgeResidualPersonalData("user-1", { name: "Asha", username: null }, warnings);

@@ -22,6 +22,7 @@ export async function register(): Promise<void> {
     cbtModule: isFeatureEnabled("cbtModule"),
     originNow: isFeatureEnabled("originNow"),
     contest: isFeatureEnabled("contest"),
+    studyMusic: isFeatureEnabled("studyMusic"),
   });
   const line = requiredEnvLogLine(status);
   if (!line) return;

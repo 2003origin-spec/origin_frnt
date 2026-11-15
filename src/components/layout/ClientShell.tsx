@@ -23,6 +23,8 @@ import { LayoutProvider, useLayout } from '@/context/LayoutContext';
 import { TimeTrackerProvider } from '@/context/TimeTrackerContext';
 import { startHighlightCapture, stopHighlightCapture } from '@/features/origin-ai/highlight-capture';
 import { useAiAccess } from '@/context/AiAccessContext';
+import { StudyMusicProvider } from '@/features/study-music/StudyMusicProvider';
+import { MusicMiniPlayer } from '@/features/study-music/MusicMiniPlayer';
 
 const FloatingChat = dynamic(() => import('./FloatingChat'), { ssr: false });
 const TutorialOverlay = dynamic(() =>
@@ -64,7 +66,7 @@ function resolveRoute(view: string) {
   return ROUTES[view] || `/${view}`;
 }
 
-function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, studyMusicEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; studyMusicEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   const { user, logout, isNavigationLocked, refreshUser } = useAuth();
   // Register this screen in the global "active screens" presence set while
   // signed in — feeds the landing "solving right now" counter.
@@ -287,7 +289,12 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
     return <LaunchCover launchAt={launchAt ?? null} />;
   }
 
+  // Study Music: students and teachers (decision D6), behind the flag. The
+  // provider is always mounted so signing in or out never remounts the page.
+  const studyMusicOn = !!studyMusicEnabled && !!user && (user.role === 'student' || user.role === 'teacher');
+
   return (
+    <StudyMusicProvider enabled={studyMusicOn}>
     <TutorialProvider>
       {/* CSS Highlight API — PostCSS rejects ::highlight() so we inject it at runtime.
           Withheld on test surfaces so no selection mark can paint during an attempt. */}
@@ -432,12 +439,22 @@ function ClientShellInner({ children, connectEnabled, premiumEnabled, socialEnab
             />
           )}
         </AnimatePresence>
+
+        {/* Study Music mini player: bottom-left on desktop, above the tab bar on mobile. */}
+        {mounted && (
+          <MusicMiniPlayer
+            pathname={pathname}
+            withTabBar={showNavbar}
+            railWidth={showNavbar ? (navExpanded ? 150 : 72) : 0}
+          />
+        )}
       </div>
     </TutorialProvider>
+    </StudyMusicProvider>
   );
 }
 
-export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
+export default function ClientShell({ children, connectEnabled, premiumEnabled, socialEnabled, contestEnabled, notesEnabled, messagingEnabled, studyMusicEnabled, coverActive, launchAt }: { children: React.ReactNode; connectEnabled?: boolean; premiumEnabled?: boolean; socialEnabled?: boolean; contestEnabled?: boolean; notesEnabled?: boolean; messagingEnabled?: boolean; studyMusicEnabled?: boolean; coverActive?: boolean; launchAt?: string | null }) {
   return (
     // reducedMotion="user" makes EVERY framer-motion animation in the app honour
     // the OS "reduce motion" setting. 56 files import framer-motion and almost
@@ -447,7 +464,7 @@ export default function ClientShell({ children, connectEnabled, premiumEnabled, 
     <MotionConfig reducedMotion="user">
       <LayoutProvider>
         <TimeTrackerProvider>
-          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
+          <ClientShellInner connectEnabled={connectEnabled} premiumEnabled={premiumEnabled} socialEnabled={socialEnabled} contestEnabled={contestEnabled} notesEnabled={notesEnabled} messagingEnabled={messagingEnabled} studyMusicEnabled={studyMusicEnabled} coverActive={coverActive} launchAt={launchAt}>{children}</ClientShellInner>
         </TimeTrackerProvider>
       </LayoutProvider>
     </MotionConfig>

@@ -11,7 +11,7 @@
  *
  * Each catch-all handler under these prefixes calls
  * `checkSharedMutationLimit` once per request, before it dispatches. Their own
- * narrower budgets (`push-token:`, `linkout:`, `now-*:`, `notes:`) are separate
+ * narrower budgets (`push-token:`, `linkout:`, `now-*:`, `notes:`, `music-url:`) are separate
  * keys and stay as they are.
  */
 
@@ -20,7 +20,7 @@ import { getApiRoutePolicy, normalizePathname } from "@/server/route-policy";
 
 /** Prefixes the middleware leaves to the route handlers (and must therefore
  * NOT charge again). */
-export const HANDLER_LIMITED_MUTATION_PREFIXES = ["/api/mobile/", "/api/notes/", "/api/now/"] as const;
+export const HANDLER_LIMITED_MUTATION_PREFIXES = ["/api/mobile/", "/api/notes/", "/api/now/", "/api/music/"] as const;
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 

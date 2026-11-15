@@ -156,9 +156,9 @@ test("the real mobile route charges the shared budget before dispatch", async ()
 });
 
 test("every catch-all handler under the moved prefixes calls the shared limit", () => {
-  assert.deepEqual([...shared.HANDLER_LIMITED_MUTATION_PREFIXES], ["/api/mobile/", "/api/notes/", "/api/now/"]);
-  for (const surface of ["mobile", "notes", "now"]) {
-    const source = readFileSync(new URL(`../../src/app/api/${surface}/[...slug]/route.ts`, import.meta.url), "utf8");
+  assert.deepEqual([...shared.HANDLER_LIMITED_MUTATION_PREFIXES], ["/api/mobile/", "/api/notes/", "/api/now/", "/api/music/"]);
+  for (const surface of ["mobile/[...slug]", "notes/[...slug]", "now/[...slug]", "music/[[...slug]]"]) {
+    const source = readFileSync(new URL(`../../src/app/api/${surface}/route.ts`, import.meta.url), "utf8");
     assert.match(source, /await checkSharedMutationLimit\(request, /, `${surface} route must charge the shared budget`);
   }
 });

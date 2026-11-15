@@ -27,6 +27,7 @@ import { appBooks } from "@/server/mobile/books";
 import { isOgcodeReportReason, OGCODE_REPORT_REASONS } from "@/server/ogcode-reports";
 import { getResumeChapter } from "@/server/ogcode-progress";
 import { handleMessagesApi } from "@/server/messaging/routes";
+import { handleMusicApi } from "@/server/music/student-api";
 import { getChallengeOfTheDayForRender } from "@/server/render-loaders";
 import { getStudentAnalytics, summarizeActivity } from "@/server/mobile/student-analytics";
 import { getPopularStudents } from "@/server/social/social-service";
@@ -309,6 +310,8 @@ export async function handleAppApi(method: string, request: NextRequest, slug: s
   try {
     // Student messaging has its own flag gate, auth and error codes (src/server/messaging/routes.ts).
     if (head === "messages") return await handleMessagesApi(method, request, slug);
+    // Study Music: flag, role and error codes in src/server/music/student-api.ts (same handlers as /api/music).
+    if (head === "music") return await handleMusicApi(method, request, slug.slice(1), "android");
     if (method === "GET" && slug.length === 1 && head === "home") return await home();
     if (head === "tasks" && slug.length <= 2) {
       const handled = await tasks(method, id, request);

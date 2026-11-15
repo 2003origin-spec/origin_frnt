@@ -29,7 +29,7 @@ function formatClock(totalSeconds: number): string {
 
 export function ContestPlayer({ contestId, proctoringEnabled = false }: { contestId: string; proctoringEnabled?: boolean }) {
   const router = useRouter();
-  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, marked, toggleMarked, begin, submit } =
+  const { phase, error, questions, answers, violations, remaining, maxViolations, setAnswer, toggleAnswerOption, setAnswerText, marked, toggleMarked, begin, submit, musicPrompt, musicButton } =
     useContestAttempt(contestId);
   // Self-hosted webcam-snapshot proctoring — only runs while the attempt is live.
   const { consent: proctorConsent } = useContestProctoring(contestId, proctoringEnabled && phase === 'running');
@@ -137,6 +137,7 @@ export function ContestPlayer({ contestId, proctoringEnabled = false }: { contes
   // running / submitting
   return (
     <div className="min-h-dvh neu-surface flex flex-col">
+      {musicPrompt}
       {/* Sticky timer bar */}
       <div
         className={cn(
@@ -161,6 +162,8 @@ export function ContestPlayer({ contestId, proctoringEnabled = false }: { contes
         <div className="text-[11px] font-bold text-muted-foreground">
           {answeredCount}/{questions.length} answered
         </div>
+        {/* Study Music: the one play / pause button, in the bar's flow. */}
+        {musicButton}
         {violations > 0 && (
           <span className="inline-flex items-center gap-1 text-[10px] font-black text-rose-500 uppercase">
             <AlertTriangle className="w-3.5 h-3.5" /> {violations}/{maxViolations}

@@ -32,6 +32,7 @@ import {
     MessageSquareWarning,
     Megaphone,
     Smartphone,
+    Music,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { usePathname, useRouter } from 'next/navigation';
@@ -65,6 +66,8 @@ const navItems = [
     { id: 'announcements', label: 'Announcements', icon: Megaphone, path: '/admin/announcements' },
     { id: 'content', label: 'Content & LMS', icon: BookOpen, path: '/admin/content' },
     { id: 'notes', label: 'Notes', icon: NotebookPen, path: '/admin/notes' },
+    // Study Music: licensed focus-music tracks (upload, publish, retire).
+    { id: 'music', label: 'BoomBoom', icon: Music, path: '/admin/music' },
     { id: 'import-jobs', label: 'Imports', icon: FileUp, path: '/admin/import-jobs' },
     { id: 'financials', label: 'Financials', icon: CreditCard, path: '/admin/financials' },
     { id: 'pricing', label: 'Pricing', icon: IndianRupee, path: '/admin/pricing' },

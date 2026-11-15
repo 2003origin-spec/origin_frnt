@@ -146,6 +146,7 @@ export async function GET(request: Request) {
       cbtModule: isFeatureEnabled("cbtModule"),
       originNow: isFeatureEnabled("originNow"),
       contest: isFeatureEnabled("contest"),
+      studyMusic: isFeatureEnabled("studyMusic"),
     }),
   );
 

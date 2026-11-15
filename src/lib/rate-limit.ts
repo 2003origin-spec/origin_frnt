@@ -337,6 +337,8 @@ export const notesShareLimiter = createLimiter(60, "rl:notes-share", "1 h");
 // daily unit cap, and reports per student per hour.
 export const messagingSendLimiter = createLimiter(30, "rl:msg-send", "60 s");
 export const messagingReportLimiter = createLimiter(20, "rl:msg-report", "1 h");
+// Study Music: signed play links per user per hour (V1/STUDY_MUSIC_PLAN.md §4.6).
+export const musicUrlLimiter = createLimiter(300, "rl:music-url", "1 h");
 
 /**
  * Per-key check for Server Actions, which need a boolean rather than the

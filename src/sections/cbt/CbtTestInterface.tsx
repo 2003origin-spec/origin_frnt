@@ -22,6 +22,7 @@ import {
 } from "@/lib/cbt/local-attempt";
 import { QuestionTimer, type CbtQuestionTimes } from "@/lib/cbt/question-timing";
 import { classifyCbtSaveFailure, runCbtSubmitFlow, type CbtFlushOutcome } from "@/lib/cbt/submit-flow";
+import { useTestMusicGuard } from "@/features/study-music/useTestMusicGuard";
 
 /**
  * CBT test player. A purpose-built fork of the Origin TestInterface: it keeps
@@ -75,6 +76,9 @@ export function CbtTestInterface() {
   // awake for the whole attempt surface (plan ledger #41/#42). Browser no-op.
   useSecureExamScreen();
   const [phase, setPhase] = useState<Phase>("loading");
+  // Study Music (STUDY_MUSIC_PLAN.md §5): the prompt comes AFTER the paper
+  // opens; music comes back on submit / leave / unmount. A no-op for CBT guests.
+  const { onTestStart: musicTestStart, onTestEnd: musicTestEnd, prompt: musicPrompt, button: musicButton } = useTestMusicGuard(phase === "running");
   const [error, setError] = useState<string | null>(null);
   const [payload, setPayload] = useState<CbtTestPayload | null>(null);
   const [studentCode, setStudentCode] = useState<string>("");
@@ -459,7 +463,8 @@ export function CbtTestInterface() {
     enterFullscreen();
     setPhase("running");
     markDirtyAndDebounce();
-  }, [enterFullscreen, markDirtyAndDebounce]);
+    musicTestStart(); // after the start: it can never delay the test
+  }, [enterFullscreen, markDirtyAndDebounce, musicTestStart]);
 
   // ── Submit (manual, auto-at-zero, and drain-safe idempotent) ───────────────
   /**
@@ -477,6 +482,7 @@ export function CbtTestInterface() {
       if (submittedRef.current) return;
       submittedRef.current = true;
       setPhase("submitting");
+      musicTestEnd();
       setSubmitError(null);
       // Bank the segment for the question they were on and force the flush:
       // grading reads the server-held draft, so the final seconds have to be up
@@ -542,7 +548,7 @@ export function CbtTestInterface() {
         "We couldn't submit yet — you're offline. Your answers are saved on this device and will be sent when the connection returns. Keep this page open if you can.",
       );
     },
-    [flushSave, markSubmitted, roomId, violations],
+    [flushSave, markSubmitted, roomId, violations, musicTestEnd],
   );
 
   // Auto-submit when the server-anchored timer hits zero.
@@ -872,6 +878,8 @@ export function CbtTestInterface() {
 
   return (
     <div ref={containerRef} className="flex h-dvh flex-col overflow-y-auto overscroll-contain neu-surface text-foreground" style={{ touchAction: 'pan-y' }}>
+      {/* Inside the fullscreen container so it shows in fullscreen. */}
+      {musicPrompt}
       {/* 0. Connectivity banner — the student must never have to guess whether
              their answers are safe, or fear being cut off for going offline. */}
       {sync !== "synced" || submitError ? (
@@ -924,6 +932,8 @@ export function CbtTestInterface() {
             </div>
           ) : null}
         </div>
+        {/* Study Music: the one play / pause button, in the header's flow. */}
+        {musicButton}
         <div className="flex flex-col gap-0.5 text-[10px] font-semibold sm:gap-1 sm:text-xs">
           <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Candidate:</span> <span className="truncate font-mono text-primary">{studentCode || "—"}</span></div>
           <div className="flex"><span className="w-20 text-muted-foreground sm:w-28">Subject:</span> <span className="truncate text-primary">{activeSubject}</span></div>

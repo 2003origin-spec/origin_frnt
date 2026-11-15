@@ -50,6 +50,7 @@ const FLAG_KEYS = [
   "studentMessaging",
   "rankPredictor",
   "collegeCounselling",
+  "studyMusic",
 ] as const;
 
 const RATE_LIMIT_MODES = ["relaxed", "normal", "strict", "lockdown"] as const;

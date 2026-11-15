@@ -291,3 +291,14 @@ test("Rank Predictor exam pages: exactly the three exam slugs are public", () =>
   assert.equal(getAppRoutePolicy("/rank-predictor/jee").kind, "unconfigured");
   assert.equal(getAppRoutePolicy("/rank-predictor/neet/extra").kind, "unconfigured");
 });
+
+test("Study Music: student API authenticated (role + flag in handler), admin API + page admin-gated, never public", () => {
+  for (const path of ["/api/music", "/api/music/tracks", "/api/music/tracks/0b0e2c1e-1111-4111-8111-111111111111/url", "/api/music/prefs", "/api/music/listen"]) {
+    assert.equal(getApiRoutePolicy(path).kind, "authenticated", path);
+  }
+  assert.equal(getApiRoutePolicy("/api/mobile/music/tracks").kind, "authenticated");
+  assert.notEqual(getApiRoutePolicy("/api/admin/music/presign").kind, "public");
+  assert.notEqual(getApiRoutePolicy("/api/admin/music/tracks").kind, "public");
+  assert.ok(!(PUBLIC_API_PATHS as readonly string[]).some((p) => p.includes("music")));
+  assert.equal(getAppRoutePolicy("/admin/music").kind, getAppRoutePolicy("/admin/announcements").kind);
+});

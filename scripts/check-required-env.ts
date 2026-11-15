@@ -24,6 +24,7 @@ const verdict = shouldFailBuild(process.env, {
   cbtModule: isFeatureEnabled("cbtModule"),
   originNow: isFeatureEnabled("originNow"),
   contest: isFeatureEnabled("contest"),
+  studyMusic: isFeatureEnabled("studyMusic"),
 });
 
 if (verdict.fail) {

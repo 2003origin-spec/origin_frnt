@@ -1441,3 +1441,21 @@ main {
     overflow: visible !important;
   }
 }
+
+/* ── Study Music mini player (V1/STUDY_MUSIC_PLAN.md §7) ────────────────── */
+/* Equaliser bars on the mini player; only used under `motion-safe:`. */
+@keyframes music-eq {
+  0%, 100% { transform: scaleY(0.35); }
+  50% { transform: scaleY(1); }
+}
+/* While the mini player is on screen, scrollable pages get room for it so it
+   never covers their last row: the player sits 6rem up and is ~4rem tall on
+   mobile (+1rem air); on desktop only the player's height (no tab bar there). */
+body:has([data-study-music-mini]) .pb-mobile-nav {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 11rem);
+}
+@media (min-width: 768px) {
+  body:has([data-study-music-mini]) .pb-mobile-nav {
+    padding-bottom: 5.5rem;
+  }
+}

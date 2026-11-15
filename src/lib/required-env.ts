@@ -16,6 +16,7 @@ export interface RequiredEnvFlags {
   cbtModule: boolean;
   originNow: boolean;
   contest: boolean;
+  studyMusic: boolean;
 }
 
 interface Requirement {
@@ -48,6 +49,9 @@ const REQUIREMENTS: readonly Requirement[] = [
   // Origin NOW: helper KYC is encrypted at rest; private uploads go to the private bucket.
   { names: ["NOW_KYC_ENCRYPTION_KEY"], reason: "originNow on", when: (f) => f.originNow },
   { names: ["R2_PRIVATE_BUCKET"], reason: "originNow on", when: (f) => f.originNow },
+  // Study Music: tracks and licence proof live in the private bucket (signed links only).
+  // Listed once: when originNow is on too, the line above already covers it.
+  { names: ["R2_PRIVATE_BUCKET"], reason: "studyMusic on", when: (f) => f.studyMusic && !f.originNow },
   // Contest: the draft/grading worker, and Vercel Cron's own bearer for the contest crons.
   { names: ["CONTEST_SERVICE_URL"], reason: "contest on", when: (f) => f.contest },
   { names: ["CONTEST_SERVICE_TOKEN"], reason: "contest on", when: (f) => f.contest },
