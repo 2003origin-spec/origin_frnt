@@ -72,7 +72,7 @@ export default function AppDownloadPill() {
   if (dismissed || covered || device === null || device === 'in-app') return null;
 
   return (
-    <div className="fixed bottom-28 left-4 z-40 hidden items-center gap-1 rounded-full border border-border bg-card/95 p-1 pr-1 shadow-lg backdrop-blur md:flex lg:bottom-6 lg:left-6">
+    <div className="landing-glass-chip fixed bottom-28 left-4 z-40 hidden items-center gap-1 rounded-full border border-border bg-card/95 p-1 pr-1 shadow-lg backdrop-blur md:flex lg:bottom-6 lg:left-6">
       <GetAppButton
         placement="landing_pill"
         className="flex min-h-12 items-center gap-3 rounded-full py-1 pl-1 pr-2 text-left text-foreground hover:bg-surface-2"

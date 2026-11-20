@@ -15,7 +15,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { motion, MotionConfig, useReducedMotion } from 'framer-motion';
-import { ArrowRight, Check, Loader2, LogIn, RotateCcw } from 'lucide-react';
+import { ArrowRight, Check, Info, Loader2, LogIn, RotateCcw } from 'lucide-react';
 
 import { useAuth } from '@/context/AuthContext';
 import { trackEvent } from '@/lib/analytics';
@@ -48,8 +48,41 @@ const QUALITY_STYLE: Record<Quality, string> = {
 };
 
 /** Arc + needle only; every number is real text next to it. */
+/** The estimate's caveat, behind an "i" button: one tap shows it, another (or Esc) hides it. */
+function AboutEstimate({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
+  return (
+    <div className="flex w-full flex-col items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-controls={id}
+        className={`inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full px-3 text-[13px] font-semibold text-white/80 hover:bg-white/[0.07] hover:text-white ${focus}`}
+      >
+        <Info aria-hidden className="size-4" /> About this estimate
+      </button>
+      {open ? (
+        <p id={id} role="note" className="rp-expect max-w-xs text-left text-[12.5px] leading-relaxed text-white/85">
+          {text}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function Dial({ fraction }: { fraction: number }) {
   const reduce = useReducedMotion();
+  const gid = useId().replace(/:/g, '');
   const active = fraction > 0;
   const cx = 100;
   const cy = 100;
@@ -69,9 +102,22 @@ function Dial({ fraction }: { fraction: number }) {
   const tip = at(angle, r - 14);
   return (
     <svg viewBox="0 0 200 185" className="w-full max-w-[240px]" aria-hidden="true">
-      <path d={arc(start, start + sweep)} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="12" strokeLinecap="round" />
+      <defs>
+        <linearGradient id={`${gid}-arc`} x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0%" stopColor="#3fb8ff" />
+          <stop offset="100%" stopColor="#3de0a6" />
+        </linearGradient>
+      </defs>
+      <path d={arc(start, start + sweep)} fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="12" strokeLinecap="round" />
+      {/* Faint tick marks, so the empty dial still reads as a scale */}
+      {Array.from({ length: 11 }, (_, i) => {
+        const a = start + (sweep * i) / 10;
+        const o = at(a, r + 13);
+        const n = at(a, r + 8);
+        return <line key={i} x1={n.x} y1={n.y} x2={o.x} y2={o.y} stroke="rgba(255,255,255,0.22)" strokeWidth="1.5" strokeLinecap="round" />;
+      })}
       {active ? (
-        <path d={arc(start, angle)} fill="none" stroke={ACCENT} strokeWidth="12" strokeLinecap="round" />
+        <path d={arc(start, angle)} fill="none" stroke={`url(#${gid}-arc)`} strokeWidth="12" strokeLinecap="round" />
       ) : null}
       {active ? (
         <motion.line
@@ -219,7 +265,7 @@ export default function RankPredictorWidget() {
 
   return (
     <MotionConfig reducedMotion="user">
-      <section id="rank-predictor" aria-labelledby={`${ids}-title`} onFocus={() => setEngaged(true)} className="relative z-10 scroll-mt-24 py-10 sm:py-16 lg:py-20">
+      <section id="rank-predictor" aria-labelledby={`${ids}-title`} onFocus={() => setEngaged(true)} className="relative z-10 scroll-mt-24 py-16 sm:py-24 lg:py-28">
         <div className="mx-auto max-w-5xl px-5 sm:px-6">
           <motion.div
             initial={{ opacity: 0, y: 28 }}
@@ -228,31 +274,21 @@ export default function RankPredictorWidget() {
             viewport={{ once: true, margin: '-80px' }}
             className="mb-8 text-center sm:mb-10"
           >
-            <div className="neu-inset mb-5 inline-flex items-center gap-2 rounded-full py-1.5 pl-4 pr-1.5">
-              <span className="text-sm font-semibold text-primary">Rank Predictor</span>
-              <span className="rounded-full bg-primary px-2.5 py-0.5 text-[12px] font-bold uppercase tracking-wide text-primary-foreground">Free</span>
-            </div>
-            <h2 id={`${ids}-title`} tabIndex={-1} className="mb-4 text-3xl font-black leading-[0.95] tracking-tighter outline-none sm:text-6xl lg:text-7xl">
-              <span className="text-outline">Where will you</span>
-              <br />
-              <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">rank?</span>
+            {/* The landing page's heading style: the heading names the tool (and that it is free)
+                instead of a small label above a question. */}
+            <h2 id={`${ids}-title`} tabIndex={-1} className="landing-h2 mb-4 outline-none">
+              Free rank predictor for NEET and JEE
             </h2>
-            <p className="mx-auto max-w-md text-sm text-muted-foreground sm:text-base">
-              Type your marks. See your NEET or JEE rank range from past years&apos; official results.
+            <p className="landing-lead mx-auto max-w-md">
+              Type your marks, no account needed. See your NEET or JEE rank range from past years&apos; official results.
             </p>
           </motion.div>
 
-          <div
-            className="relative overflow-hidden rounded-3xl text-white"
-            style={{
-              background: 'linear-gradient(135deg, #0a0a0f 0%, #0f0f1a 50%, #060d1f 100%)',
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.08), 0 32px 64px rgba(0,0,0,0.35)',
-            }}
-          >
+          <div className="rp-panel relative overflow-hidden rounded-3xl text-white">
             <div className="relative grid md:grid-cols-[1.15fr_auto_1fr]">
               {/* Form */}
               <div className="flex flex-col gap-5 p-5 sm:p-8">
-                <div role="tablist" aria-label="Exam" className="grid grid-cols-3 gap-1 rounded-full bg-white/[0.08] p-1">
+                <div role="tablist" aria-label="Exam" className="rp-segment grid grid-cols-3 gap-1 rounded-full p-1">
                   {RANK_PREDICTOR_EXAMS.map((id, index) => (
                     <button
                       key={id}
@@ -268,7 +304,7 @@ export default function RankPredictorWidget() {
                       onClick={() => switchExam(id)}
                       onKeyDown={(e) => onTabKey(e, index)}
                       className={`h-12 cursor-pointer rounded-full px-1 text-[14px] font-semibold transition-colors ${focus} ${
-                        exam === id ? 'bg-white text-slate-950' : 'text-white hover:bg-white/10'
+                        exam === id ? 'rp-tab-on' : 'text-white/80 hover:bg-white/[0.07] hover:text-white'
                       }`}
                     >
                       {EXAM_LABEL[id]}
@@ -300,22 +336,28 @@ export default function RankPredictorWidget() {
                             <label htmlFor={inputId} className="text-[13px] text-white/80">
                               {b.label}
                             </label>
-                            <input
-                              id={inputId}
-                              type="number"
-                              inputMode="numeric"
-                              step={1}
-                              min={b.min}
-                              max={b.max}
-                              value={examMarks[b.id] ?? ''}
-                              onChange={(e) => setMark(b.id, e.target.value)}
-                              aria-invalid={err || undefined}
-                              aria-describedby={`${inputId}-max${err ? ` ${ids}-mark-err` : ''}`}
-                              className={`h-12 w-full min-w-0 rounded-[12px] border bg-white/[0.06] px-3 text-[16px] tabular-nums text-white ${focus} ${
-                                err ? 'border-red-400' : 'border-white/35'
-                              }`}
-                            />
-                            <span id={`${inputId}-max`} className="text-[12px] text-white/70">
+                            <div className="relative">
+                              <input
+                                id={inputId}
+                                type="number"
+                                inputMode="numeric"
+                                step={1}
+                                min={b.min}
+                                max={b.max}
+                                placeholder="0"
+                                value={examMarks[b.id] ?? ''}
+                                onChange={(e) => setMark(b.id, e.target.value)}
+                                aria-invalid={err || undefined}
+                                aria-describedby={`${inputId}-max${err ? ` ${ids}-mark-err` : ''}`}
+                                className={`rp-input h-14 w-full min-w-0 rounded-[14px] border px-3 pb-3 text-[19px] font-semibold tabular-nums text-white placeholder:text-white/30 sm:pb-0 sm:pr-12 sm:text-[20px] ${focus} ${
+                                  err ? 'border-red-400' : 'border-white/20'
+                                }`}
+                              />
+                              <span aria-hidden="true" className="pointer-events-none absolute bottom-1.5 left-3 text-[11px] text-white/60 sm:inset-y-0 sm:bottom-auto sm:left-auto sm:right-3 sm:flex sm:items-center sm:text-[13px]">
+                                /{b.max}
+                              </span>
+                            </div>
+                            <span id={`${inputId}-max`} className="sr-only">
                               out of {b.max}
                             </span>
                           </div>
@@ -327,9 +369,19 @@ export default function RankPredictorWidget() {
                         {fieldError.message}
                       </p>
                     ) : null}
-                    <p className="text-[14px] text-white/80" aria-live="polite">
-                      Total <span className="font-display text-[20px] font-bold tabular-nums text-white">{marksTotal(exam, examMarks)}</span> / {EXAM_MAX_MARKS[exam]}
-                    </p>
+                    <div className="mt-1 flex items-center gap-3">
+                      <p className="shrink-0 text-[14px] text-white/80" aria-live="polite">
+                        Total <span className="font-display text-[20px] font-bold tabular-nums text-white">{marksTotal(exam, examMarks)}</span> / {EXAM_MAX_MARKS[exam]}
+                      </p>
+                      <span aria-hidden="true" className="rp-total h-1.5 flex-1 overflow-hidden rounded-full">
+                        <span
+                          className="block h-full rounded-full"
+                          style={{
+                            width: `${Math.max(0, Math.min(100, (marksTotal(exam, examMarks) / EXAM_MAX_MARKS[exam]) * 100))}%`,
+                          }}
+                        />
+                      </span>
+                    </div>
                   </fieldset>
 
                   <div role="radiogroup" aria-labelledby={`${ids}-cat`} className="flex flex-col gap-2">
@@ -345,7 +397,7 @@ export default function RankPredictorWidget() {
                           aria-checked={category === c}
                           onClick={() => setCategory(c)}
                           className={`inline-flex h-12 cursor-pointer items-center gap-1 rounded-full border px-3.5 text-[14px] font-semibold ${focus} ${
-                            category === c ? 'border-sky-300 bg-sky-400/15 text-white' : 'border-white/35 text-white hover:bg-white/10'
+                            category === c ? 'rp-chip-on' : 'border-white/20 text-white/85 hover:bg-white/[0.07] hover:text-white'
                           }`}
                         >
                           {category === c ? <Check aria-hidden className="size-4" /> : null}
@@ -364,7 +416,7 @@ export default function RankPredictorWidget() {
                         id={`${ids}-state`}
                         value={homeState}
                         onChange={(e) => setHomeState(e.target.value)}
-                        className={`h-12 w-full rounded-[12px] border border-white/35 bg-[#11131a] px-3 text-[16px] text-white ${focus}`}
+                        className={`rp-input h-12 w-full rounded-[14px] border border-white/20 px-3 text-[16px] text-white ${focus}`}
                       >
                         <option value="">Not selected</option>
                         {INDIAN_STATES.map((s) => (
@@ -384,7 +436,7 @@ export default function RankPredictorWidget() {
                       type="submit"
                       disabled={loading}
                       aria-busy={loading}
-                      className={`inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-white px-6 text-[16px] font-semibold text-slate-950 hover:bg-sky-100 disabled:opacity-70 ${focus}`}
+                      className={`rp-primary inline-flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full px-6 text-[16px] font-bold disabled:opacity-70 ${focus}`}
                     >
                       {loading ? <Loader2 aria-hidden className="size-5 motion-safe:animate-spin" /> : outOfChecks ? <LogIn aria-hidden className="size-5" /> : null}
                       {loading ? 'Predicting…' : outOfChecks ? 'Log in for unlimited checks' : 'Predict my rank'}
@@ -419,14 +471,14 @@ export default function RankPredictorWidget() {
                 </form>
               </div>
 
-              <div className="mx-8 hidden w-px self-stretch bg-white/[0.08] md:my-8 md:block" />
+              <div className="mx-2 hidden w-px self-stretch bg-white/[0.08] md:my-8 md:block" />
 
               {/* Result */}
               <div
                 ref={resultRef}
                 tabIndex={-1}
                 aria-live="polite"
-                className="flex flex-col items-center gap-4 border-t border-white/[0.08] p-5 outline-none sm:p-8 md:border-t-0"
+                className="rp-result flex flex-col items-center gap-4 border-t border-white/[0.08] p-5 outline-none sm:p-8 md:border-t-0"
               >
                 <Dial fraction={dialFraction(exam, p?.air ?? null)} />
                 {requestError ? (
@@ -494,9 +546,16 @@ export default function RankPredictorWidget() {
                     <p className="text-center text-[12px] leading-relaxed text-white/70">{sourcesLine(result.sources, result.checkedOn)}</p>
                   </div>
                 ) : (
-                  <p className="-mt-2 text-center text-[14px] text-white/80">Your rank range shows here.</p>
+                  <div className="-mt-2 flex w-full flex-col items-center gap-4 text-center">
+                    <p className="font-heading text-[19px] font-bold text-white">Your rank range shows here</p>
+                    <ul className="flex w-full max-w-xs flex-col gap-2 text-left text-[14px] text-white/80">
+                      <li className="rp-expect">Your likely All-India rank range</li>
+                      <li className="rp-expect">Your rank in your category</li>
+                      {exam === 'neet' ? <li className="rp-expect">Your state rank, if you pick a home state</li> : <li className="rp-expect">Your percentile range</li>}
+                    </ul>
+                  </div>
                 )}
-                <p className="text-center text-[12px] leading-relaxed text-white/70">{result?.disclaimer ?? DISCLAIMER}</p>
+                <AboutEstimate text={result?.disclaimer ?? DISCLAIMER} />
               </div>
             </div>
           </div>

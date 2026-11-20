@@ -90,7 +90,7 @@ export default function NumbersWall() {
   const inView = useInView(ref, { once: true, margin: '-100px' });
 
   return (
-    <section ref={ref} className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
+    <section ref={ref} className="py-16 sm:py-24 lg:py-28 relative z-10 overflow-hidden">
       {/* Radial glow */}
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_50%,rgba(0,102,255,0.07),transparent)] pointer-events-none" />
 
@@ -103,7 +103,7 @@ export default function NumbersWall() {
           className="text-center mb-10"
         >
           <span className="text-[10px] font-black text-primary tracking-[0.4em] uppercase block mb-4">By the Numbers</span>
-          <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter">
+          <h2 className="text-3xl xs:text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter">
             <span className="text-outline">The</span>{' '}
             <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
               proof
@@ -129,7 +129,7 @@ export default function NumbersWall() {
               {/* Hover shimmer */}
               <div className="absolute inset-[2px] rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 bg-gradient-to-br from-white/[0.03] to-transparent pointer-events-none" />
 
-              <div className="relative text-4xl xs:text-5xl sm:text-7xl lg:text-8xl font-black text-outline tracking-tighter leading-none mb-3 tabular-nums font-heading">
+              <div className="relative text-4xl xs:text-5xl sm:text-5xl lg:text-6xl font-black text-outline tracking-tighter leading-none mb-3 tabular-nums font-heading">
                 {inView ? <OdometerNumber value={stat.value} suffix={stat.suffix} /> : <span>{stat.value}{stat.suffix}</span>}
               </div>
               <p className="relative text-base sm:text-lg font-black text-outline mb-1 tracking-tight">{stat.label}</p>

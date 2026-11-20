@@ -170,7 +170,7 @@ export default function TeacherFlipCard() {
   const isStudent = active === 'student';
 
   return (
-    <section className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
+    <section className="py-16 sm:py-24 lg:py-28 relative z-10 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-1/4 left-0 w-[30%] h-[50%] rounded-full blur-[100px] opacity-[0.04]"
           style={{ background: 'radial-gradient(circle, #0066ff, transparent)' }} />
@@ -190,7 +190,7 @@ export default function TeacherFlipCard() {
           <span className="block mb-4 text-sm font-semibold text-primary">
             Two Audiences, One Platform
           </span>
-          <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[0.95] mb-6">
+          <h2 className="text-3xl xs:text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter leading-[0.95] mb-6">
             <span className="text-outline">Built for</span>{' '}
             <span className="bg-gradient-to-r from-primary via-primary/90 to-primary bg-clip-text text-transparent">both sides</span>{' '}
             <span className="text-outline">of the</span><br />
@@ -203,7 +203,7 @@ export default function TeacherFlipCard() {
               <button
                 key={a}
                 onClick={() => setActive(a)}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all duration-300"
+                className="flex min-h-11 items-center gap-2 px-5 py-2.5 rounded-full text-xs font-black uppercase tracking-widest transition-all duration-300"
                 style={active === a ? {
                   background: a === 'student' ? '#0066ff' : '#10b981',
                   color: 'white',

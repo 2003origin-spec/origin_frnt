@@ -1,0 +1,1663 @@
+/* Landing page look: the native app's "Orbit" design (origin-app, src/theme/palette.ts
+   and src/components/space/living-background.tsx) carried to the web, with
+   Glassy UI surfaces on top. Scoped to .landing-glass, so no other page changes.
+
+   - Background: the app's deep-space page colour, a nebula lit from the top in
+     the app's glow blue and violet, and a star field that twinkles. Like the
+     app, stars show only in dark; light is the app's pale page with soft washes.
+     The nebula is static on purpose: every glass card re-blurs whatever moves
+     behind it, so only the stars' opacity animates.
+   - Surfaces: the app's surface colours and hairline edges, as frosted glass.
+   - The older neumorphic helpers (.neu-raised, .neu-inset, .neu-btn,
+     .shine-card) inside the landing sub-components get the same material.
+     They are declared with !important inside @layer utilities, so the
+     overrides below sit in the same layer and win on specificity. */
+
+/* Light (the app's light palette: space #F4F6FB, surface1 #FFFFFF, edge ink 10%) */
+.landing-glass {
+  --lgx-fill: rgb(255 255 255 / 0.72);
+  --lgx-fill-hover: rgb(255 255 255 / 0.86);
+  --lgx-fill-inset: rgb(235 239 247 / 0.7);
+  --lgx-fill-dense: rgb(255 255 255 / 0.88);
+  --lgx-border: rgb(11 16 32 / 0.1);
+  --lgx-border-inset: rgb(11 16 32 / 0.08);
+  --lgx-frost: blur(18px) saturate(1.6);
+  --lgx-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.95),
+    0 1px 2px rgb(11 16 32 / 0.05), 0 12px 32px -12px rgb(11 16 32 / 0.16);
+  --lgx-shadow-inset: inset 0 1px 2px rgb(11 16 32 / 0.06);
+  /* The app's AA-tested text colours */
+  --lg-muted-foreground: #454d6b;
+}
+
+/* Dark (the app's dark palette: space #05060F, surface2 #131729, edge white 8–16%) */
+.landing-glass.dark {
+  --lgx-fill: rgb(19 23 41 / 0.62);
+  --lgx-fill-hover: rgb(27 32 54 / 0.72);
+  --lgx-fill-inset: rgb(12 15 29 / 0.7);
+  --lgx-fill-dense: rgb(12 15 29 / 0.9);
+  --lgx-border: rgb(255 255 255 / 0.1);
+  --lgx-border-inset: rgb(255 255 255 / 0.08);
+  --lgx-frost: blur(20px) saturate(1.5);
+  --lgx-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 1px 2px rgb(0 0 0 / 0.4), 0 20px 48px -16px rgb(0 0 0 / 0.75);
+  --lgx-shadow-inset: inset 0 1px 3px rgb(0 0 0 / 0.45);
+  --lg-muted-foreground: #a3aac8;
+}
+
+/* ── Background: deep space, nebula, stars ──────────────────────────────── */
+
+.landing-glass-backdrop {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  /* Light: the app's pale page with soft blue and violet washes near the top */
+  background:
+    radial-gradient(60% 45% at 18% 0%, rgb(30 107 255 / 0.1), transparent 70%),
+    radial-gradient(50% 40% at 85% 6%, rgb(140 123 255 / 0.1), transparent 70%),
+    radial-gradient(45% 35% at 60% 100%, rgb(61 224 200 / 0.06), transparent 70%),
+    #f4f6fb;
+}
+
+.dark .landing-glass-backdrop {
+  /* Dark: the nebula of the app's living background, brightest at the top */
+  background:
+    radial-gradient(70% 55% at 22% -6%, rgb(30 107 255 / 0.34), transparent 70%),
+    radial-gradient(55% 45% at 88% 4%, rgb(140 123 255 / 0.26), transparent 70%),
+    radial-gradient(40% 30% at 55% 30%, rgb(63 184 255 / 0.08), transparent 70%),
+    radial-gradient(60% 40% at 50% 110%, rgb(61 224 200 / 0.06), transparent 70%),
+    #05060f;
+}
+
+/* Stars: four 1 px layers drawn with box-shadow over a 2560×1600 field.
+   Two bright layers twinkle out of phase; stars are dark-theme only, as in the app. */
+.landing-glass-stars {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  border-radius: 50%;
+  background: transparent;
+  display: none;
+}
+
+.dark .landing-glass-stars {
+  display: block;
+}
+
+.landing-glass-stars--tiny {
+  box-shadow:
+    456px 51px 0 0 rgb(255 255 255 / 0.47),
+    1003px 457px 0 0 rgb(255 255 255 / 0.29),
+    419px 1385px 0 0 rgb(255 255 255 / 0.47),
+    2233px 178px 0 0 rgb(255 255 255 / 0.43),
+    130px 61px 0 0 rgb(255 255 255 / 0.28),
+    952px 1034px 0 0 rgb(255 255 255 / 0.43),
+    2298px 407px 0 0 rgb(255 255 255 / 0.46),
+    2232px 859px 0 0 rgb(255 255 255 / 0.32),
+    2413px 569px 0 0 rgb(255 255 255 / 0.49),
+    26px 1554px 0 0 rgb(255 255 255 / 0.49),
+    1731px 696px 0 0 rgb(255 255 255 / 0.33),
+    881px 1563px 0 0 rgb(255 255 255 / 0.35),
+    379px 778px 0 0 rgb(255 255 255 / 0.28),
+    1408px 1236px 0 0 rgb(255 255 255 / 0.33),
+    177px 1494px 0 0 rgb(255 255 255 / 0.39),
+    511px 775px 0 0 rgb(255 255 255 / 0.27),
+    1200px 1287px 0 0 rgb(255 255 255 / 0.44),
+    1481px 1182px 0 0 rgb(255 255 255 / 0.31),
+    284px 93px 0 0 rgb(255 255 255 / 0.45),
+    1185px 163px 0 0 rgb(255 255 255 / 0.51),
+    413px 778px 0 0 rgb(255 255 255 / 0.33),
+    1494px 333px 0 0 rgb(255 255 255 / 0.36),
+    858px 1372px 0 0 rgb(255 255 255 / 0.33),
+    292px 1247px 0 0 rgb(255 255 255 / 0.44),
+    2187px 1493px 0 0 rgb(255 255 255 / 0.32),
+    1893px 777px 0 0 rgb(255 255 255 / 0.33),
+    2281px 449px 0 0 rgb(255 255 255 / 0.46),
+    229px 469px 0 0 rgb(255 255 255 / 0.5),
+    1292px 821px 0 0 rgb(255 255 255 / 0.33),
+    864px 1161px 0 0 rgb(255 255 255 / 0.51),
+    1288px 435px 0 0 rgb(255 255 255 / 0.45),
+    1620px 1316px 0 0 rgb(255 255 255 / 0.39),
+    1084px 285px 0 0 rgb(255 255 255 / 0.32),
+    2299px 1103px 0 0 rgb(255 255 255 / 0.33),
+    2394px 877px 0 0 rgb(255 255 255 / 0.52),
+    1635px 741px 0 0 rgb(255 255 255 / 0.32),
+    566px 1043px 0 0 rgb(255 255 255 / 0.4),
+    192px 224px 0 0 rgb(255 255 255 / 0.3),
+    655px 1393px 0 0 rgb(255 255 255 / 0.38),
+    260px 788px 0 0 rgb(255 255 255 / 0.36),
+    1917px 1083px 0 0 rgb(255 255 255 / 0.33),
+    2266px 23px 0 0 rgb(255 255 255 / 0.45),
+    469px 1396px 0 0 rgb(255 255 255 / 0.52),
+    1092px 1574px 0 0 rgb(255 255 255 / 0.44),
+    456px 601px 0 0 rgb(255 255 255 / 0.38),
+    1858px 6px 0 0 rgb(255 255 255 / 0.54),
+    1078px 1025px 0 0 rgb(255 255 255 / 0.48),
+    2079px 217px 0 0 rgb(255 255 255 / 0.51),
+    1222px 1308px 0 0 rgb(255 255 255 / 0.4),
+    814px 313px 0 0 rgb(255 255 255 / 0.36),
+    661px 1104px 0 0 rgb(255 255 255 / 0.54),
+    2172px 1px 0 0 rgb(255 255 255 / 0.43),
+    2001px 39px 0 0 rgb(255 255 255 / 0.28),
+    1486px 629px 0 0 rgb(255 255 255 / 0.32),
+    986px 1161px 0 0 rgb(255 255 255 / 0.53),
+    350px 1498px 0 0 rgb(255 255 255 / 0.4),
+    283px 1557px 0 0 rgb(255 255 255 / 0.41),
+    515px 262px 0 0 rgb(255 255 255 / 0.45),
+    2251px 338px 0 0 rgb(255 255 255 / 0.33),
+    2484px 866px 0 0 rgb(255 255 255 / 0.54),
+    2208px 1546px 0 0 rgb(255 255 255 / 0.47),
+    823px 1460px 0 0 rgb(255 255 255 / 0.34),
+    1529px 897px 0 0 rgb(255 255 255 / 0.52),
+    1849px 247px 0 0 rgb(255 255 255 / 0.32),
+    262px 692px 0 0 rgb(255 255 255 / 0.26),
+    2268px 471px 0 0 rgb(255 255 255 / 0.43),
+    29px 145px 0 0 rgb(255 255 255 / 0.46),
+    241px 468px 0 0 rgb(255 255 255 / 0.27),
+    128px 676px 0 0 rgb(255 255 255 / 0.27),
+    974px 570px 0 0 rgb(255 255 255 / 0.45),
+    877px 1104px 0 0 rgb(255 255 255 / 0.29),
+    2338px 1180px 0 0 rgb(255 255 255 / 0.39),
+    1937px 833px 0 0 rgb(255 255 255 / 0.31),
+    397px 1349px 0 0 rgb(255 255 255 / 0.38),
+    1734px 841px 0 0 rgb(255 255 255 / 0.39),
+    221px 1379px 0 0 rgb(255 255 255 / 0.45),
+    403px 124px 0 0 rgb(255 255 255 / 0.37),
+    1389px 223px 0 0 rgb(255 255 255 / 0.32),
+    779px 1098px 0 0 rgb(255 255 255 / 0.38),
+    1728px 375px 0 0 rgb(255 255 255 / 0.33),
+    1023px 154px 0 0 rgb(255 255 255 / 0.38),
+    2254px 200px 0 0 rgb(255 255 255 / 0.27),
+    2214px 30px 0 0 rgb(255 255 255 / 0.54),
+    968px 340px 0 0 rgb(255 255 255 / 0.37),
+    1971px 437px 0 0 rgb(255 255 255 / 0.51),
+    240px 337px 0 0 rgb(255 255 255 / 0.36),
+    1599px 543px 0 0 rgb(255 255 255 / 0.53),
+    1863px 584px 0 0 rgb(255 255 255 / 0.38),
+    2276px 1355px 0 0 rgb(255 255 255 / 0.47),
+    634px 388px 0 0 rgb(255 255 255 / 0.34),
+    239px 1186px 0 0 rgb(255 255 255 / 0.47),
+    249px 1531px 0 0 rgb(255 255 255 / 0.34),
+    205px 1196px 0 0 rgb(255 255 255 / 0.39),
+    2175px 322px 0 0 rgb(255 255 255 / 0.27),
+    2080px 164px 0 0 rgb(255 255 255 / 0.51),
+    280px 1218px 0 0 rgb(255 255 255 / 0.27),
+    963px 826px 0 0 rgb(255 255 255 / 0.29),
+    2333px 504px 0 0 rgb(255 255 255 / 0.42),
+    162px 1268px 0 0 rgb(255 255 255 / 0.27),
+    2390px 1157px 0 0 rgb(255 255 255 / 0.41),
+    1068px 418px 0 0 rgb(255 255 255 / 0.45),
+    1286px 488px 0 0 rgb(255 255 255 / 0.33),
+    536px 1375px 0 0 rgb(255 255 255 / 0.44),
+    1872px 647px 0 0 rgb(255 255 255 / 0.53),
+    297px 19px 0 0 rgb(255 255 255 / 0.39),
+    2306px 204px 0 0 rgb(255 255 255 / 0.27),
+    873px 1036px 0 0 rgb(255 255 255 / 0.33),
+    1429px 140px 0 0 rgb(255 255 255 / 0.51),
+    1513px 583px 0 0 rgb(255 255 255 / 0.3),
+    2225px 1440px 0 0 rgb(255 255 255 / 0.34),
+    2166px 16px 0 0 rgb(255 255 255 / 0.45),
+    2271px 613px 0 0 rgb(255 255 255 / 0.53),
+    424px 275px 0 0 rgb(255 255 255 / 0.33),
+    438px 1520px 0 0 rgb(255 255 255 / 0.42),
+    1115px 577px 0 0 rgb(255 255 255 / 0.43),
+    1404px 416px 0 0 rgb(255 255 255 / 0.46),
+    1081px 1035px 0 0 rgb(255 255 255 / 0.4),
+    208px 189px 0 0 rgb(255 255 255 / 0.44),
+    1133px 90px 0 0 rgb(255 255 255 / 0.25),
+    535px 1304px 0 0 rgb(255 255 255 / 0.54),
+    661px 1518px 0 0 rgb(255 255 255 / 0.38),
+    1751px 1148px 0 0 rgb(255 255 255 / 0.25),
+    308px 1415px 0 0 rgb(255 255 255 / 0.52),
+    2234px 73px 0 0 rgb(255 255 255 / 0.5),
+    2385px 1131px 0 0 rgb(255 255 255 / 0.29),
+    522px 85px 0 0 rgb(255 255 255 / 0.34),
+    163px 732px 0 0 rgb(255 255 255 / 0.31),
+    1022px 1365px 0 0 rgb(255 255 255 / 0.28),
+    2293px 832px 0 0 rgb(255 255 255 / 0.54),
+    633px 484px 0 0 rgb(255 255 255 / 0.51),
+    725px 844px 0 0 rgb(255 255 255 / 0.26),
+    1360px 843px 0 0 rgb(255 255 255 / 0.49),
+    1016px 546px 0 0 rgb(255 255 255 / 0.3),
+    442px 783px 0 0 rgb(255 255 255 / 0.51),
+    1927px 455px 0 0 rgb(255 255 255 / 0.31),
+    1885px 716px 0 0 rgb(255 255 255 / 0.34),
+    932px 456px 0 0 rgb(255 255 255 / 0.26),
+    791px 816px 0 0 rgb(255 255 255 / 0.35),
+    284px 1583px 0 0 rgb(255 255 255 / 0.33),
+    2086px 818px 0 0 rgb(255 255 255 / 0.45),
+    2196px 678px 0 0 rgb(255 255 255 / 0.53),
+    472px 534px 0 0 rgb(255 255 255 / 0.3),
+    1087px 78px 0 0 rgb(255 255 255 / 0.28),
+    1779px 707px 0 0 rgb(255 255 255 / 0.47),
+    1284px 893px 0 0 rgb(255 255 255 / 0.43),
+    2094px 236px 0 0 rgb(255 255 255 / 0.37),
+    2361px 389px 0 0 rgb(255 255 255 / 0.33),
+    1786px 3px 0 0 rgb(255 255 255 / 0.41),
+    2205px 1406px 0 0 rgb(255 255 255 / 0.47),
+    807px 745px 0 0 rgb(255 255 255 / 0.38),
+    1352px 1276px 0 0 rgb(255 255 255 / 0.34),
+    510px 1474px 0 0 rgb(255 255 255 / 0.52),
+    2077px 633px 0 0 rgb(255 255 255 / 0.45),
+    1336px 824px 0 0 rgb(255 255 255 / 0.46),
+    2270px 260px 0 0 rgb(255 255 255 / 0.31),
+    1552px 1387px 0 0 rgb(255 255 255 / 0.47),
+    712px 1260px 0 0 rgb(255 255 255 / 0.42),
+    1663px 1122px 0 0 rgb(255 255 255 / 0.5),
+    1244px 587px 0 0 rgb(255 255 255 / 0.31),
+    2375px 1242px 0 0 rgb(255 255 255 / 0.45),
+    1904px 904px 0 0 rgb(255 255 255 / 0.38),
+    875px 1046px 0 0 rgb(255 255 255 / 0.39),
+    695px 1349px 0 0 rgb(255 255 255 / 0.28),
+    2111px 1359px 0 0 rgb(255 255 255 / 0.44),
+    1372px 191px 0 0 rgb(255 255 255 / 0.5),
+    962px 1377px 0 0 rgb(255 255 255 / 0.34),
+    815px 301px 0 0 rgb(255 255 255 / 0.26),
+    1002px 973px 0 0 rgb(255 255 255 / 0.43),
+    298px 932px 0 0 rgb(255 255 255 / 0.37),
+    2357px 398px 0 0 rgb(255 255 255 / 0.47),
+    1572px 1012px 0 0 rgb(255 255 255 / 0.37),
+    604px 1343px 0 0 rgb(255 255 255 / 0.46),
+    436px 1594px 0 0 rgb(255 255 255 / 0.38),
+    720px 1425px 0 0 rgb(255 255 255 / 0.41),
+    205px 1141px 0 0 rgb(255 255 255 / 0.32),
+    497px 934px 0 0 rgb(255 255 255 / 0.29),
+    1903px 1367px 0 0 rgb(255 255 255 / 0.41),
+    2289px 1219px 0 0 rgb(255 255 255 / 0.35),
+    1812px 1254px 0 0 rgb(255 255 255 / 0.49),
+    2067px 873px 0 0 rgb(255 255 255 / 0.5),
+    2244px 913px 0 0 rgb(255 255 255 / 0.52),
+    1944px 921px 0 0 rgb(255 255 255 / 0.33),
+    1012px 1305px 0 0 rgb(255 255 255 / 0.33),
+    2135px 992px 0 0 rgb(255 255 255 / 0.44),
+    1124px 900px 0 0 rgb(255 255 255 / 0.27),
+    1170px 480px 0 0 rgb(255 255 255 / 0.33),
+    1309px 1106px 0 0 rgb(255 255 255 / 0.27),
+    617px 473px 0 0 rgb(255 255 255 / 0.36),
+    625px 1446px 0 0 rgb(255 255 255 / 0.31),
+    1699px 834px 0 0 rgb(255 255 255 / 0.35),
+    1908px 851px 0 0 rgb(255 255 255 / 0.27),
+    1720px 797px 0 0 rgb(255 255 255 / 0.52),
+    2392px 1424px 0 0 rgb(255 255 255 / 0.26),
+    2358px 779px 0 0 rgb(255 255 255 / 0.39),
+    1440px 611px 0 0 rgb(255 255 255 / 0.48),
+    1716px 1102px 0 0 rgb(255 255 255 / 0.47),
+    2236px 1235px 0 0 rgb(255 255 255 / 0.52),
+    1999px 449px 0 0 rgb(255 255 255 / 0.33),
+    1989px 59px 0 0 rgb(255 255 255 / 0.37),
+    1656px 1483px 0 0 rgb(255 255 255 / 0.3),
+    1914px 261px 0 0 rgb(255 255 255 / 0.54),
+    2187px 55px 0 0 rgb(255 255 255 / 0.52),
+    2424px 1155px 0 0 rgb(255 255 255 / 0.45),
+    343px 1316px 0 0 rgb(255 255 255 / 0.38),
+    1891px 372px 0 0 rgb(255 255 255 / 0.27),
+    1552px 670px 0 0 rgb(255 255 255 / 0.31),
+    1338px 691px 0 0 rgb(255 255 255 / 0.48),
+    1552px 569px 0 0 rgb(255 255 255 / 0.48),
+    1726px 516px 0 0 rgb(255 255 255 / 0.5),
+    1926px 39px 0 0 rgb(255 255 255 / 0.47),
+    213px 716px 0 0 rgb(255 255 255 / 0.32),
+    281px 1599px 0 0 rgb(255 255 255 / 0.54),
+    164px 1544px 0 0 rgb(255 255 255 / 0.26),
+    1012px 408px 0 0 rgb(255 255 255 / 0.5),
+    2544px 312px 0 0 rgb(255 255 255 / 0.32),
+    1939px 1371px 0 0 rgb(255 255 255 / 0.28),
+    892px 952px 0 0 rgb(255 255 255 / 0.46),
+    1510px 343px 0 0 rgb(255 255 255 / 0.43),
+    469px 1592px 0 0 rgb(255 255 255 / 0.5),
+    1274px 221px 0 0 rgb(255 255 255 / 0.42),
+    1277px 1179px 0 0 rgb(255 255 255 / 0.45),
+    1537px 812px 0 0 rgb(255 255 255 / 0.53),
+    812px 155px 0 0 rgb(255 255 255 / 0.43),
+    994px 208px 0 0 rgb(255 255 255 / 0.46),
+    1235px 1401px 0 0 rgb(255 255 255 / 0.43),
+    495px 1159px 0 0 rgb(255 255 255 / 0.48),
+    1422px 1091px 0 0 rgb(255 255 255 / 0.38),
+    1517px 141px 0 0 rgb(255 255 255 / 0.4),
+    1397px 25px 0 0 rgb(255 255 255 / 0.5),
+    2007px 216px 0 0 rgb(255 255 255 / 0.38),
+    1483px 1301px 0 0 rgb(255 255 255 / 0.52),
+    1883px 1448px 0 0 rgb(255 255 255 / 0.3),
+    721px 1502px 0 0 rgb(255 255 255 / 0.41),
+    1106px 1261px 0 0 rgb(255 255 255 / 0.49),
+    2204px 1586px 0 0 rgb(255 255 255 / 0.4),
+    1784px 1497px 0 0 rgb(255 255 255 / 0.43),
+    1320px 502px 0 0 rgb(255 255 255 / 0.5),
+    354px 571px 0 0 rgb(255 255 255 / 0.51),
+    998px 1536px 0 0 rgb(255 255 255 / 0.39),
+    2499px 1368px 0 0 rgb(255 255 255 / 0.36);
+}
+
+.landing-glass-stars--mid {
+  box-shadow:
+    117px 1012px 0 0.5px rgb(255 255 255 / 0.75),
+    744px 998px 0 0.5px rgb(255 255 255 / 0.52),
+    1058px 697px 0 0.5px rgb(255 255 255 / 0.55),
+    2441px 1436px 0 0.5px rgb(255 255 255 / 0.76),
+    2276px 20px 0 0.5px rgb(255 255 255 / 0.63),
+    782px 175px 0 0.5px rgb(255 255 255 / 0.53),
+    1664px 1000px 0 0.5px rgb(255 255 255 / 0.64),
+    984px 1414px 0 0.5px rgb(255 255 255 / 0.62),
+    2010px 917px 0 0.5px rgb(255 255 255 / 0.73),
+    381px 602px 0 0.5px rgb(255 255 255 / 0.53),
+    996px 627px 0 0.5px rgb(255 255 255 / 0.68),
+    1511px 969px 0 0.5px rgb(255 255 255 / 0.64),
+    1408px 871px 0 0.5px rgb(255 255 255 / 0.8),
+    2254px 677px 0 0.5px rgb(255 255 255 / 0.57),
+    1858px 554px 0 0.5px rgb(255 255 255 / 0.56),
+    944px 247px 0 0.5px rgb(255 255 255 / 0.7),
+    1292px 244px 0 0.5px rgb(255 255 255 / 0.71),
+    758px 392px 0 0.5px rgb(255 255 255 / 0.53),
+    1983px 566px 0 0.5px rgb(255 255 255 / 0.7),
+    2148px 1222px 0 0.5px rgb(255 255 255 / 0.55),
+    411px 397px 0 0.5px rgb(255 255 255 / 0.55),
+    1478px 367px 0 0.5px rgb(255 255 255 / 0.56),
+    2187px 259px 0 0.5px rgb(255 255 255 / 0.55),
+    223px 1133px 0 0.5px rgb(255 255 255 / 0.55),
+    517px 1306px 0 0.5px rgb(255 255 255 / 0.75),
+    2010px 210px 0 0.5px rgb(255 255 255 / 0.76),
+    2351px 582px 0 0.5px rgb(255 255 255 / 0.61),
+    1804px 697px 0 0.5px rgb(255 255 255 / 0.51),
+    210px 517px 0 0.5px rgb(255 255 255 / 0.78),
+    1956px 233px 0 0.5px rgb(255 255 255 / 0.74),
+    1641px 1007px 0 0.5px rgb(255 255 255 / 0.48),
+    219px 310px 0 0.5px rgb(255 255 255 / 0.5),
+    2305px 622px 0 0.5px rgb(255 255 255 / 0.48),
+    1016px 242px 0 0.5px rgb(255 255 255 / 0.65),
+    1704px 1241px 0 0.5px rgb(255 255 255 / 0.66),
+    2533px 462px 0 0.5px rgb(255 255 255 / 0.72),
+    1558px 922px 0 0.5px rgb(255 255 255 / 0.77),
+    1217px 1205px 0 0.5px rgb(255 255 255 / 0.8),
+    1250px 1164px 0 0.5px rgb(255 255 255 / 0.67),
+    2497px 1515px 0 0.5px rgb(255 255 255 / 0.48),
+    851px 1281px 0 0.5px rgb(255 255 255 / 0.52),
+    332px 321px 0 0.5px rgb(255 255 255 / 0.53),
+    2260px 153px 0 0.5px rgb(255 255 255 / 0.5),
+    1673px 922px 0 0.5px rgb(255 255 255 / 0.69),
+    1924px 596px 0 0.5px rgb(255 255 255 / 0.46),
+    1180px 1447px 0 0.5px rgb(255 255 255 / 0.55),
+    1859px 145px 0 0.5px rgb(255 255 255 / 0.69),
+    1083px 1280px 0 0.5px rgb(255 255 255 / 0.66),
+    810px 870px 0 0.5px rgb(255 255 255 / 0.49),
+    920px 1326px 0 0.5px rgb(255 255 255 / 0.5),
+    1088px 291px 0 0.5px rgb(255 255 255 / 0.47),
+    679px 629px 0 0.5px rgb(255 255 255 / 0.66),
+    2331px 591px 0 0.5px rgb(255 255 255 / 0.6),
+    1919px 1410px 0 0.5px rgb(255 255 255 / 0.56),
+    1648px 557px 0 0.5px rgb(255 255 255 / 0.63),
+    2022px 896px 0 0.5px rgb(255 255 255 / 0.48),
+    163px 884px 0 0.5px rgb(255 255 255 / 0.71),
+    2472px 512px 0 0.5px rgb(255 255 255 / 0.46),
+    937px 1380px 0 0.5px rgb(255 255 255 / 0.74),
+    2356px 1202px 0 0.5px rgb(255 255 255 / 0.78),
+    1103px 1180px 0 0.5px rgb(255 255 255 / 0.46),
+    717px 963px 0 0.5px rgb(255 255 255 / 0.63),
+    1811px 569px 0 0.5px rgb(255 255 255 / 0.51),
+    2397px 892px 0 0.5px rgb(255 255 255 / 0.67),
+    2014px 186px 0 0.5px rgb(255 255 255 / 0.61),
+    1672px 682px 0 0.5px rgb(255 255 255 / 0.56),
+    428px 329px 0 0.5px rgb(255 255 255 / 0.57),
+    2029px 590px 0 0.5px rgb(255 255 255 / 0.68),
+    1640px 1557px 0 0.5px rgb(255 255 255 / 0.64),
+    1862px 180px 0 0.5px rgb(255 255 255 / 0.56);
+}
+
+.landing-glass-stars--twinkle-a {
+  box-shadow:
+    1324px 237px 0 0.75px rgb(255 255 255 / 0.99),
+    1655px 1053px 0 0.75px rgb(255 255 255 / 0.96),
+    4px 1346px 0 0.75px rgb(255 255 255 / 0.97),
+    1892px 846px 0 0.75px rgb(255 255 255 / 0.81),
+    2123px 740px 0 0.75px rgb(255 255 255 / 0.92),
+    2041px 1280px 0 0.75px rgb(255 255 255 / 0.89),
+    211px 416px 0 0.75px rgb(255 255 255 / 0.85),
+    536px 589px 0 0.75px rgb(255 255 255 / 0.89),
+    1985px 248px 0 0.75px rgb(255 255 255 / 0.81),
+    2493px 490px 0 0.75px rgb(255 255 255 / 0.94),
+    1272px 1128px 0 0.75px rgb(255 255 255 / 0.8),
+    1671px 190px 0 0.75px rgb(255 255 255 / 0.84),
+    464px 945px 0 0.75px rgb(255 255 255 / 0.99),
+    630px 1020px 0 0.75px rgb(255 255 255 / 0.99),
+    1195px 1042px 0 0.75px rgb(255 255 255 / 0.94),
+    1701px 988px 0 0.75px rgb(255 255 255 / 1.0),
+    998px 935px 0 0.75px rgb(255 255 255 / 0.91),
+    1571px 390px 0 0.75px rgb(255 255 255 / 0.98);
+  animation: landing-glass-twinkle 4.2s ease-in-out infinite;
+}
+
+.landing-glass-stars--twinkle-b {
+  box-shadow:
+    2081px 1528px 0 0.75px rgb(255 255 255 / 0.98),
+    285px 565px 0 0.75px rgb(255 255 255 / 0.95),
+    1699px 696px 0 0.75px rgb(255 255 255 / 0.99),
+    2079px 547px 0 0.75px rgb(255 255 255 / 0.96),
+    1158px 1486px 0 0.75px rgb(255 255 255 / 0.86),
+    2404px 1187px 0 0.75px rgb(255 255 255 / 1.0),
+    2005px 304px 0 0.75px rgb(255 255 255 / 0.89),
+    1983px 706px 0 0.75px rgb(255 255 255 / 0.87),
+    2225px 772px 0 0.75px rgb(255 255 255 / 0.89),
+    1318px 386px 0 0.75px rgb(255 255 255 / 1.0),
+    978px 1171px 0 0.75px rgb(255 255 255 / 0.88),
+    1682px 89px 0 0.75px rgb(255 255 255 / 0.86),
+    1937px 1444px 0 0.75px rgb(255 255 255 / 0.98),
+    1561px 790px 0 0.75px rgb(255 255 255 / 1.0),
+    623px 1014px 0 0.75px rgb(255 255 255 / 0.99),
+    517px 1028px 0 0.75px rgb(255 255 255 / 0.99),
+    1359px 205px 0 0.75px rgb(255 255 255 / 0.97),
+    1803px 204px 0 0.75px rgb(255 255 255 / 0.91);
+  animation: landing-glass-twinkle 5.6s ease-in-out -2.4s infinite;
+}
+
+@keyframes landing-glass-twinkle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-glass-stars { animation: none; }
+}
+
+/* ── Small glass helpers used directly in LandingPage.tsx ───────────────── */
+
+/* Dense glass for layers that carry a lot of text (mobile drawer, sticky bar). */
+.landing-glass-sheet {
+  background: var(--lgx-fill-dense);
+  -webkit-backdrop-filter: var(--lgx-frost);
+  backdrop-filter: var(--lgx-frost);
+  border-left: 1px solid var(--lgx-border);
+  box-shadow: var(--lgx-shadow);
+}
+
+.landing-glass-bar {
+  background: var(--lgx-fill-dense);
+  -webkit-backdrop-filter: var(--lgx-frost);
+  backdrop-filter: var(--lgx-frost);
+  border-top: 1px solid var(--lgx-border);
+}
+
+.landing-glass-footer {
+  background: var(--lgx-fill);
+  -webkit-backdrop-filter: var(--lgx-frost);
+  backdrop-filter: var(--lgx-frost);
+  border-top: 1px solid var(--lgx-border);
+}
+
+/* ── Bridge: neumorphic helpers become glass inside the landing page ────── */
+
+@layer utilities {
+  .landing-glass .neu-raised {
+    background-color: var(--lgx-fill) !important;
+    border: 1px solid var(--lgx-border) !important;
+    border-radius: 24px !important;
+    box-shadow: var(--lgx-shadow) !important;
+    -webkit-backdrop-filter: var(--lgx-frost);
+    backdrop-filter: var(--lgx-frost);
+  }
+
+  .landing-glass .neu-inset {
+    background-color: var(--lgx-fill-inset) !important;
+    border: 1px solid var(--lgx-border-inset) !important;
+    border-radius: 16px !important;
+    box-shadow: var(--lgx-shadow-inset) !important;
+    -webkit-backdrop-filter: var(--lgx-frost);
+    backdrop-filter: var(--lgx-frost);
+  }
+
+  .landing-glass .neu-surface {
+    background-color: transparent !important;
+  }
+
+  .landing-glass .neu-raised.rounded-full,
+  .landing-glass .neu-inset.rounded-full,
+  .landing-glass .neu-btn.rounded-full {
+    border-radius: 9999px !important;
+  }
+
+  .landing-glass .neu-raised.rounded-2xl,
+  .landing-glass .neu-inset.rounded-2xl {
+    border-radius: 20px !important;
+  }
+
+  .landing-glass .neu-inset.rounded-xl {
+    border-radius: 14px !important;
+  }
+
+  .landing-glass .neu-btn {
+    background-color: var(--lgx-fill);
+    border: 1px solid var(--lgx-border);
+    box-shadow: var(--lgx-shadow);
+    -webkit-backdrop-filter: var(--lgx-frost);
+    backdrop-filter: var(--lgx-frost);
+  }
+
+  .landing-glass .neu-btn:hover {
+    background-color: var(--lgx-fill-hover);
+  }
+
+  /* The orbiting colour blob and its opaque mask belong to the old card
+     style; the glass rim replaces them. */
+  .landing-glass .shine-card::before,
+  .landing-glass .shine-card::after {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .landing-glass {
+    --lgx-fill: hsl(var(--surface-2));
+    --lgx-fill-hover: hsl(var(--surface-3));
+    --lgx-fill-inset: hsl(var(--surface-1));
+    --lgx-fill-dense: hsl(var(--surface-2));
+    --lgx-frost: none;
+  }
+}
+
+/* ── Chips and pills that keep their own markup (rank chip, Get the app) ── */
+
+.landing-glass .landing-glass-chip {
+  background: var(--lgx-fill);
+  border: 1px solid var(--lgx-border);
+  box-shadow: var(--lgx-shadow);
+  -webkit-backdrop-filter: var(--lgx-frost);
+  backdrop-filter: var(--lgx-frost);
+}
+
+.landing-glass a.landing-glass-chip:hover,
+.landing-glass button.landing-glass-chip:hover {
+  background: var(--lgx-fill-hover);
+}
+
+/* ── Main call-to-action: the app's primary pill ─────────────────────────────
+   Same component, API and click timing (LandingCTABtn); the fill is the app's
+   `oriGradient` (palette.ts) with its AA text colour `onOri`, plus a glass rim. */
+
+.landing-glass .landing-cta-btn {
+  border-radius: 9999px;
+  color: #fff;
+  text-shadow: none;
+  background: linear-gradient(135deg, #1670cc 0%, #0a5fb8 55%, #0b56a8 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 1px 2px rgb(11 16 32 / 0.2),
+    0 14px 30px -10px rgb(10 95 184 / 0.55);
+}
+
+.landing-glass.dark .landing-cta-btn {
+  color: #03121f;
+  background: linear-gradient(135deg, #7fd3ff 0%, #3fb8ff 55%, #2a9bef 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.55),
+    0 1px 2px rgb(0 0 0 / 0.4),
+    0 14px 34px -10px rgb(63 184 255 / 0.55);
+}
+
+.landing-glass .landing-cta-btn:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.4),
+    0 2px 4px rgb(11 16 32 / 0.2),
+    0 18px 36px -10px rgb(10 95 184 / 0.6);
+}
+
+.landing-glass.dark .landing-cta-btn:hover {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.6),
+    0 2px 4px rgb(0 0 0 / 0.4),
+    0 18px 40px -10px rgb(63 184 255 / 0.65);
+}
+
+/* A clean pill like the app's: the old gloss and gradient frame layers washed
+   the fill out (measured: the light pill read pale blue), so they go. */
+.landing-glass .landing-cta-btn::before,
+.landing-glass .landing-cta-btn::after {
+  display: none;
+}
+
+.landing-glass .landing-cta-btn .cta-outline,
+.landing-glass .landing-cta-btn .cta-outline::before {
+  border-radius: 9999px;
+}
+
+/* ── Text-heavy Glassy UI cards: a denser frost so body copy stays readable
+      when Ori or a colour field drifts behind the glass. ─────────────────── */
+
+.landing-glass .landing-glass-card {
+  --lg-glass-alpha: 0.5;
+  --lg-glass-blur: 22px;
+}
+
+.landing-glass.dark .landing-glass-card {
+  --lg-glass-alpha: 0.05;
+  --lg-glass-brightness: 0.72;
+  --lg-glass-blur: 26px;
+}
+
+/* Secondary copy on glass uses Glassy UI's own muted ink, which is tuned to
+   stay readable on frost (the app's --muted-foreground is tuned for solid
+   surfaces and washes out when colour sits behind the glass). */
+.landing-glass .lg-glass-surface .text-muted-foreground {
+  color: var(--lg-muted-foreground);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .landing-glass.dark {
+    --lgx-fill: hsl(var(--surface-2));
+    --lgx-fill-hover: hsl(var(--surface-3));
+    --lgx-fill-inset: hsl(var(--surface-1));
+    --lgx-fill-dense: hsl(var(--surface-2));
+    --lgx-frost: none;
+  }
+}
+
+/* ── Typography (landing page only) ─────────────────────────────────────────
+   Plus Jakarta Sans for headings and text (one family; headings get the
+   heavier weights). Tailwind's font-sans / font-heading / font-display utilities all
+   resolve to --font-grotesque, so re-pointing that one variable inside
+   .landing-glass moves every utility to the body face; headings are then
+   lifted to the display face. */
+
+.landing-glass {
+  --font-landing-heading: var(--font-landing-body);
+  --font-grotesque: var(--font-landing-body), system-ui, sans-serif;
+  font-family: var(--font-landing-body), system-ui, sans-serif;
+}
+
+.landing-glass :is(h1, h2, h3, h4),
+.landing-glass .font-heading,
+.landing-glass .font-display,
+.landing-glass .landing-cta-btn {
+  font-family: var(--font-landing-heading), system-ui, sans-serif;
+}
+
+/* Darker Grotesque is a narrow, small face, so the page leaned on weight 900
+   and very tight tracking. Plus Jakarta Sans tops out at 800 and is wider:
+   cap the weight there and relax the tracking so big headings stay clean. */
+.landing-glass :is(h1, h2, h3).font-black,
+.landing-glass :is(h1, h2, h3) .font-black,
+.landing-glass .font-heading.font-black {
+  font-weight: 800;
+}
+
+.landing-glass :is(h1, h2).tracking-tighter {
+  letter-spacing: -0.035em;
+}
+
+/* Section headings used white letters with a black outline and shadow for
+   their first half. Over the colour backdrop that reads as a sticker; solid
+   ink beside the brand-blue second half is calmer and easier to read. */
+.landing-glass .text-outline {
+  color: hsl(var(--foreground));
+  -webkit-text-stroke: 0;
+  text-shadow: none;
+}
+
+/* Keyboard focus: the main button sets `outline: none`, and several landing
+   links had no visible focus at all. One consistent ring for the whole page. */
+.landing-glass :is(a, button, [role='tab'], summary):focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 3px;
+}
+
+.landing-glass .landing-cta-btn:focus-visible {
+  outline-offset: 4px;
+}
+
+/* ── Accent colours (the app's ori / nova / pulse / mint / sky, light and dark sets) ── */
+
+.landing-glass {
+  --orbit-ori: #0a5fb8;
+  --orbit-nova: #a84000;
+  --orbit-pulse: #5a41d8;
+  --orbit-mint: #08704c;
+  --orbit-sky: #1f5fd1;
+}
+
+.landing-glass.dark {
+  --orbit-ori: #3fb8ff;
+  --orbit-nova: #ff8a3d;
+  --orbit-pulse: #8c7bff;
+  --orbit-mint: #3de0a6;
+  --orbit-sky: #5b9dff;
+}
+
+
+/* ══ The rebuilt page (screens 1–8) ════════════════════════════════════════
+   Type scale, the one surface style, buttons, the phone frame and each
+   screen's own parts. Rules from the design skills: no labels above
+   headings, no gradient text, glass only where it does a job, 44 px targets. */
+
+.landing-h1 {
+  font-family: var(--font-landing-heading), system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2.5rem, 1.6rem + 3.6vw, 4.6rem);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  color: hsl(var(--foreground));
+  text-wrap: balance;
+}
+
+.landing-h2 {
+  font-family: var(--font-landing-heading), system-ui, sans-serif;
+  font-weight: 800;
+  font-size: clamp(2rem, 1.4rem + 2.2vw, 3.4rem);
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  color: hsl(var(--foreground));
+  text-wrap: balance;
+}
+
+.landing-lead {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: var(--lg-muted-foreground);
+  text-wrap: pretty;
+}
+
+.landing-wrap {
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .landing-wrap { padding-inline: 1.5rem; }
+}
+
+/* One screen per idea: generous space between screens, more above a heading than below. */
+.landing-screen {
+  padding-block: 5rem;
+  scroll-margin-top: 5.5rem;
+}
+
+@media (min-width: 1024px) {
+  .landing-screen { padding-block: 7.5rem; }
+}
+
+/* The one surface: the app's card colour with a hairline edge. Frosted only
+   because the stars and Ori pass behind it. */
+.landing-surface {
+  background: var(--lgx-fill);
+  border: 1px solid var(--lgx-border);
+  box-shadow: var(--lgx-shadow);
+  -webkit-backdrop-filter: var(--lgx-frost);
+  backdrop-filter: var(--lgx-frost);
+}
+
+.landing-surface--accent {
+  border-color: color-mix(in srgb, var(--orbit-ori) 55%, transparent);
+  box-shadow: var(--lgx-shadow), 0 0 0 1px color-mix(in srgb, var(--orbit-ori) 25%, transparent);
+}
+
+/* Buttons: the app's primary pill, and a quiet outline one */
+.landing-primary-btn {
+  color: #fff;
+  background: linear-gradient(135deg, #1670cc 0%, #0a5fb8 55%, #0b56a8 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.3), 0 10px 24px -10px rgb(10 95 184 / 0.6);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.landing-glass.dark .landing-primary-btn {
+  color: #03121f;
+  background: linear-gradient(135deg, #7fd3ff 0%, #3fb8ff 55%, #2a9bef 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 10px 28px -10px rgb(63 184 255 / 0.55);
+}
+
+.landing-primary-btn:hover { filter: brightness(1.07); }
+.landing-primary-btn:active { transform: scale(0.97); }
+
+.landing-ghost-btn {
+  color: hsl(var(--foreground));
+  background: var(--lgx-fill-inset);
+  border: 1px solid var(--lgx-border);
+  transition: background-color 0.2s ease;
+}
+
+.landing-ghost-btn:hover { background: var(--lgx-fill-hover); }
+
+.landing-chip {
+  color: var(--orbit-ori);
+  background: color-mix(in srgb, var(--orbit-ori) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--orbit-ori) 30%, transparent);
+  transition: background-color 0.2s ease;
+}
+
+.landing-chip:hover { background: color-mix(in srgb, var(--orbit-ori) 18%, transparent); }
+
+.landing-link {
+  color: var(--orbit-ori);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.landing-link:hover { text-decoration-thickness: 2px; }
+
+/* ── Hero doubt box ─────────────────────────────────────────────────────── */
+
+.landing-segment {
+  background: var(--lgx-fill-inset);
+  border: 1px solid var(--lgx-border-inset);
+}
+
+.landing-segment__item {
+  color: var(--lg-muted-foreground);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.landing-segment__item[aria-pressed='true'] {
+  color: hsl(var(--foreground));
+  background: var(--lgx-fill-hover);
+  box-shadow: inset 0 0 0 1px var(--lgx-border);
+}
+
+.landing-input {
+  color: hsl(var(--foreground));
+  background: var(--lgx-fill-inset);
+  border: 1px solid var(--lgx-border-inset);
+  transition: border-color 0.2s ease;
+}
+
+.landing-input::placeholder { color: var(--lg-muted-foreground); opacity: 1; }
+.landing-input:focus { outline: none; border-color: var(--orbit-ori); }
+.landing-input:focus-visible { outline: 2px solid var(--orbit-ori); outline-offset: 2px; }
+
+.landing-example {
+  background: transparent;
+  border: 1px solid var(--lgx-border-inset);
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.landing-example:hover { background: var(--lgx-fill-inset); border-color: var(--lgx-border); }
+
+.landing-example__subject {
+  min-width: 4.5rem;
+  color: var(--orbit-ori);
+}
+
+/* ── Phone frame (real app screenshots) ─────────────────────────────────── */
+
+.landing-phone {
+  position: relative;
+  aspect-ratio: 9 / 20;
+  border-radius: 2.4rem;
+  padding: 0.55rem;
+  background: linear-gradient(160deg, #2a3048, #0c0f1d);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.12),
+    0 30px 60px -20px rgb(0 0 0 / 0.55),
+    0 0 0 1px rgb(11 16 32 / 0.25);
+}
+
+.landing-phone__screen {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+  border-radius: 1.9rem;
+  background: #05060f;
+}
+
+.landing-phone .absolute.landing-phone__screen {
+  inset: 0.55rem;
+  width: calc(100% - 1.1rem);
+  height: calc(100% - 1.1rem);
+}
+
+/* Hero: the top of the home screen (Ori's orbit), fading into the page, so the
+   phone never pushes the doubt box below the fold. */
+.landing-phone--crop {
+  aspect-ratio: 9 / 13;
+  -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  mask-image: linear-gradient(to bottom, #000 72%, transparent);
+}
+
+@media (max-width: 1023px) {
+  .landing-phone--crop { aspect-ratio: 9 / 11; }
+}
+
+/* ── Screen 2: the app window ──────────────────────────────────────────── */
+
+.landing-window {
+  border-radius: 1.75rem;
+  overflow: hidden;
+  background: var(--lgx-fill-dense);
+  border: 1px solid var(--lgx-border);
+  box-shadow: var(--lgx-shadow);
+}
+
+.landing-window__bar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.85rem 1.1rem;
+  border-bottom: 1px solid var(--lgx-border);
+}
+
+.landing-window__bar span {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 9999px;
+  background: var(--lgx-border);
+}
+
+.landing-window__bar p {
+  margin-left: 0.6rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--lg-muted-foreground);
+}
+
+.landing-bubble {
+  padding: 0.75rem 1rem;
+  border-radius: 1.25rem 1.25rem 0.35rem 1.25rem;
+  color: #fff;
+  background: #0a5fb8;
+}
+
+.landing-glass.dark .landing-bubble {
+  color: #03121f;
+  background: #3fb8ff;
+}
+
+/* ── Screen 3: steps beside the pinned phone ────────────────────────────── */
+
+.landing-step {
+  position: relative;
+  padding: 0 0 3.5rem 2.25rem;
+  border-left: 2px solid var(--lgx-border);
+}
+
+.landing-step.is-last { border-left-color: transparent; padding-bottom: 0; }
+
+.landing-step__dot {
+  position: absolute;
+  left: -0.5rem;
+  top: 0.55rem;
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: 9999px;
+  background: hsl(var(--background));
+  border: 2px solid var(--lgx-border);
+  transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.landing-step.is-active .landing-step__dot,
+.landing-step.is-last .landing-step__dot {
+  border-color: var(--orbit-ori);
+  background: var(--orbit-ori);
+}
+
+@media (min-width: 1024px) {
+  .landing-step { opacity: 0.45; transition: opacity 0.4s ease; }
+  .landing-step.is-active,
+  .landing-step.is-last { opacity: 1; }
+}
+
+/* ── Screen 5: rows ─────────────────────────────────────────────────────── */
+
+.landing-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.landing-row {
+  display: flex;
+  gap: 1.1rem;
+  padding: 1.4rem 0;
+  border-top: 1px solid var(--lgx-border);
+}
+
+.landing-row:last-child { border-bottom: 1px solid var(--lgx-border); }
+
+.landing-row__icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border-radius: 9999px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+}
+
+.landing-tone--ori { --tone: var(--orbit-ori); }
+.landing-tone--nova { --tone: var(--orbit-nova); }
+.landing-tone--pulse { --tone: var(--orbit-pulse); }
+.landing-tone--mint { --tone: var(--orbit-mint); }
+.landing-tone--sky { --tone: var(--orbit-sky); }
+
+/* ── Screen 6: books (CSS 3D; the three.js shelf replaces it from 1024 px) ── */
+
+.landing-books3d {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 8.5rem;
+  gap: 1.5rem;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding: 1.25rem 1rem 1.75rem 1.25rem;
+  perspective: 1100px;
+}
+
+@media (min-width: 640px) {
+  .landing-books3d { grid-auto-columns: 10rem; gap: 2rem; }
+}
+
+.landing-book { scroll-snap-align: start; }
+
+.landing-book__body {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  transform-style: preserve-3d;
+  transform: rotateY(-24deg) rotateX(4deg);
+  transition: transform 0.35s ease;
+}
+
+.landing-book:hover .landing-book__body { transform: rotateY(-6deg) translateY(-6px); }
+
+.landing-book__cover {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px 6px 6px 2px;
+  box-shadow: 18px 22px 30px -16px rgb(0 0 0 / 0.65);
+  transform: translateZ(9px);
+}
+
+/* Spine: the cover's left strip, folded back 90° */
+.landing-book__spine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 18px;
+  height: 100%;
+  background-size: 900% 100%;
+  background-position: left center;
+  filter: brightness(0.75);
+  transform-origin: left center;
+  transform: translateZ(9px) rotateY(-90deg);
+}
+
+/* Page block on the right edge */
+.landing-book__pages {
+  position: absolute;
+  top: 3px;
+  right: 0;
+  width: 18px;
+  height: calc(100% - 6px);
+  background: repeating-linear-gradient(90deg, #f3eee2 0 2px, #ddd6c6 2px 3px);
+  transform-origin: right center;
+  transform: translateZ(9px) rotateY(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-book__body { transition: none; }
+}
+
+/* ── Screen 7: tick lists ───────────────────────────────────────────────── */
+
+.landing-ticks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.landing-ticks li {
+  position: relative;
+  padding-left: 1.75rem;
+  font-size: 0.975rem;
+  line-height: 1.5;
+  color: hsl(var(--foreground));
+}
+
+.landing-ticks li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.3rem;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 8.5l2.5 2.5L12 5.5'/%3E%3C/svg%3E") center / 0.75rem no-repeat,
+    var(--orbit-mint);
+}
+
+/* ── Screen 8: questions ────────────────────────────────────────────────── */
+
+.landing-faq__item { border-top: 1px solid var(--lgx-border); }
+.landing-faq__item:last-child { border-bottom: 1px solid var(--lgx-border); }
+.landing-faq__item summary { list-style: none; }
+.landing-faq__item summary::-webkit-details-marker { display: none; }
+
+.landing-faq__sign {
+  position: relative;
+  flex-shrink: 0;
+  width: 1rem;
+  height: 1rem;
+}
+
+.landing-faq__sign::before,
+.landing-faq__sign::after {
+  content: '';
+  position: absolute;
+  inset: 50% 0 auto 0;
+  height: 2px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: var(--orbit-ori);
+  transition: transform 0.25s ease;
+}
+
+.landing-faq__sign::after { transform: rotate(90deg); }
+.landing-faq__item[open] .landing-faq__sign::after { transform: rotate(0deg); }
+
+/* Browser surfaces in the page's colours */
+.landing-glass ::selection { background: color-mix(in srgb, var(--orbit-ori) 30%, transparent); }
+.landing-glass .tabular-nums { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-step,
+  .landing-step__dot,
+  .landing-faq__sign::after { transition: none; }
+}
+
+/* Subject buttons in the doubt box: the app's subject colours (palette.ts
+   subject.*), AA as text on both themes' surfaces. */
+.landing-glass {
+  --subject-physics: #1f5fd1;
+  --subject-chemistry: #08706a;
+  --subject-maths: #855a00;
+  --subject-biology: #2a7018;
+}
+
+.landing-glass.dark {
+  --subject-physics: #5b9dff;
+  --subject-chemistry: #3de0c8;
+  --subject-maths: #ffc14d;
+  --subject-biology: #7be36a;
+}
+
+.landing-subject {
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+  transition: background-color 0.2s ease;
+}
+
+.landing-subject:hover { background: color-mix(in srgb, var(--tone) 18%, transparent); }
+.landing-subject--physics { --tone: var(--subject-physics); }
+.landing-subject--chemistry { --tone: var(--subject-chemistry); }
+.landing-subject--maths { --tone: var(--subject-maths); }
+.landing-subject--biology { --tone: var(--subject-biology); }
+
+/* "Get it on Google Play" badge: the store's own black badge in light mode;
+   white in dark mode, so it stands out against deep space. */
+.landing-play-badge {
+  color: #fff;
+  background: #000;
+  border: 1px solid #a6a6a6;
+  box-shadow: 0 10px 24px -12px rgb(0 0 0 / 0.5);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.landing-glass.dark .landing-play-badge {
+  color: #0b1020;
+  background: #fff;
+  border-color: #fff;
+  box-shadow: 0 10px 30px -10px rgb(255 255 255 / 0.25);
+}
+
+.landing-play-badge:hover { transform: translateY(-1px); }
+.landing-play-badge:active { transform: scale(0.98); }
+
+/* ── Rank predictor card (always dark, like an app screen) ─────────────────
+   The app's dark surfaces (#0C0F1D → #131729), hairline edge, ori-blue accents. */
+
+.rp-panel {
+  background:
+    radial-gradient(60% 80% at 100% 0%, rgb(63 184 255 / 0.12), transparent 60%),
+    radial-gradient(50% 70% at 0% 100%, rgb(140 123 255 / 0.1), transparent 60%),
+    linear-gradient(160deg, #131729 0%, #0c0f1d 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 0 0 1px rgb(255 255 255 / 0.1),
+    0 32px 64px -20px rgb(0 0 0 / 0.6);
+}
+
+.rp-segment {
+  background: rgb(255 255 255 / 0.06);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.08);
+}
+
+.rp-tab-on {
+  color: #03121f;
+  background: linear-gradient(135deg, #7fd3ff 0%, #3fb8ff 100%);
+  box-shadow: 0 6px 18px -8px rgb(63 184 255 / 0.7);
+}
+
+.rp-input {
+  background: rgb(5 6 15 / 0.55);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.rp-input:hover { border-color: rgb(255 255 255 / 0.35); }
+.rp-input:focus { border-color: #3fb8ff; background: rgb(5 6 15 / 0.8); }
+
+/* Hide the number spinner; marks are typed */
+.rp-input::-webkit-outer-spin-button,
+.rp-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rp-input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+
+.rp-total { background: rgb(255 255 255 / 0.08); }
+.rp-total > span {
+  background: linear-gradient(90deg, #3fb8ff, #3de0a6);
+  transition: width 0.3s ease;
+}
+
+.rp-chip-on {
+  color: #fff;
+  border-color: #3fb8ff;
+  background: rgb(63 184 255 / 0.16);
+}
+
+.rp-primary {
+  color: #03121f;
+  background: linear-gradient(135deg, #7fd3ff 0%, #3fb8ff 55%, #2a9bef 100%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.5), 0 12px 28px -12px rgb(63 184 255 / 0.7);
+  transition: filter 0.2s ease, transform 0.2s ease;
+}
+
+.rp-primary:hover:not(:disabled) { filter: brightness(1.07); }
+.rp-primary:active:not(:disabled) { transform: scale(0.98); }
+
+.rp-result { background: rgb(5 6 15 / 0.25); }
+
+.rp-expect {
+  position: relative;
+  padding: 0.6rem 0.75rem 0.6rem 2.25rem;
+  border-radius: 0.75rem;
+  background: rgb(255 255 255 / 0.04);
+  border: 1px solid rgb(255 255 255 / 0.06);
+}
+
+.rp-expect::before {
+  content: '';
+  position: absolute;
+  left: 0.8rem;
+  top: 50%;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: -0.275rem;
+  border-radius: 9999px;
+  background: #3fb8ff;
+  box-shadow: 0 0 0 3px rgb(63 184 255 / 0.18);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rp-total > span,
+  .rp-input,
+  .rp-primary { transition: none; }
+}
+
+/* ── Book pile, phone version (CSS spines) + the book card ─────────────── */
+
+.landing-pile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 1rem 0 1.5rem;
+}
+
+.landing-pile__book {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 22rem);
+  height: 2.75rem;
+  padding-inline: 1rem;
+  border-radius: 4px;
+  color: #fff;
+  transform: rotate(var(--tilt, 0deg));
+  box-shadow:
+    inset 0 2px 0 rgb(255 255 255 / 0.18),
+    inset 0 -3px 0 rgb(0 0 0 / 0.25),
+    0 6px 14px -8px rgb(0 0 0 / 0.6);
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+}
+
+.landing-pile__book::before,
+.landing-pile__book::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: rgb(255 255 255 / 0.45);
+}
+
+.landing-pile__book::before { left: 1.5rem; }
+.landing-pile__book::after { right: 1.5rem; }
+
+.landing-pile__book.is-out { transform: translateX(12%) rotate(0deg) scale(1.03); }
+
+.landing-pile__ncert {
+  position: absolute;
+  left: 2.25rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  opacity: 0.85;
+}
+
+.landing-pile__title {
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+
+.landing-bookcard__chapter {
+  position: relative;
+  padding-left: 1.1rem;
+}
+
+.landing-bookcard__chapter::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.6em;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 9999px;
+  background: var(--orbit-ori);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-pile__book { transition: none; }
+}
+
+/* The worked-example page inside the book card: paper-like, quiet */
+.landing-worked {
+  background: var(--lgx-fill-inset);
+  border: 1px solid var(--lgx-border-inset);
+}
+
+/* Hero 3D phone: only the top of the phone shows, fading into the page (the lower
+   half of the home screen holds a sample contest card that should not show). */
+.landing-phone3d--crop {
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+/* ── Open book without WebGL (CSS) ─────────────────────────────────────── */
+
+.landing-openbook {
+  display: flex;
+  justify-content: center;
+  padding: 1rem 0 1.5rem;
+  perspective: 1600px;
+}
+
+.landing-openbook__spread {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: min(100%, 40rem);
+  aspect-ratio: 3 / 2;
+  border-radius: 6px;
+  box-shadow: 0 30px 60px -24px rgb(0 0 0 / 0.7);
+  transform: rotateX(8deg);
+  transform-style: preserve-3d;
+  animation: landing-openbook-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.landing-openbook__page {
+  position: relative;
+  overflow: hidden;
+  padding: 1.4rem 1.3rem;
+  background: #f7f3ea;
+  color: #20263f;
+}
+
+.landing-openbook__page--left {
+  border-radius: 6px 0 0 6px;
+  background: linear-gradient(to left, rgb(0 0 0 / 0.12), transparent 14%), #f7f3ea;
+}
+
+.landing-openbook__page--right {
+  border-radius: 0 6px 6px 0;
+  background: linear-gradient(to right, rgb(0 0 0 / 0.14), transparent 12%), #f7f3ea;
+}
+
+.landing-openbook__kicker {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.landing-openbook__title {
+  margin-top: 0.35rem;
+  font-family: var(--font-landing-heading), system-ui, sans-serif;
+  font-size: 1.3rem;
+  font-weight: 800;
+  line-height: 1.15;
+  color: #0b1020;
+}
+
+.landing-openbook__label {
+  margin-top: 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5a6280;
+}
+
+.landing-openbook__chapters {
+  margin-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.landing-openbook__chapters li { position: relative; padding-left: 0.9rem; }
+.landing-openbook__chapters li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 9999px;
+  background: currentColor;
+}
+.landing-openbook__chapters li.is-on { font-weight: 800; }
+
+.landing-openbook__q {
+  margin-top: 0.7rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: #0b1020;
+}
+
+.landing-openbook__steps {
+  margin-top: 0.55rem;
+  padding-left: 1.1rem;
+  list-style: decimal;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.landing-openbook__answer {
+  display: inline-block;
+  margin-top: 0.8rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 0.6rem;
+  border: 2px solid rgb(10 95 184 / 0.55);
+  background: rgb(10 95 184 / 0.1);
+  color: #0a5fb8;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+/* The cover: hinged on the spine (the spread's centre line); starts over the right page and
+   swings open past the left page, fading as it goes flat. */
+.landing-openbook__cover {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 50%;
+  transform-origin: left center;
+  transform-style: preserve-3d;
+  animation: landing-openbook-turn-solid 0.95s 0.25s cubic-bezier(0.45, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+
+.landing-openbook__cover-front,
+.landing-openbook__cover-back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 0 6px 6px 0;
+  backface-visibility: hidden;
+}
+
+.landing-openbook__cover-front { object-fit: cover; }
+.landing-openbook__cover-back {
+  background: #ece5d6;
+  transform: rotateY(180deg);
+  border-radius: 6px 0 0 6px;
+}
+
+/* Transform only, no fade: the open book must be readable even if animations never run
+   (and opacity on this 3D parent would flatten the turning pages). */
+@keyframes landing-openbook-in {
+  from { transform: rotateX(8deg) translateY(16px) scale(0.96); }
+  to   { transform: rotateX(8deg); }
+}
+
+/* A turning sheet: lifts at the spine first, bows mid-turn (the skew makes the free edge
+   trail, like paper in the air), then settles flat on the left page and fades into it. */
+@keyframes landing-openbook-turn {
+  0%   { transform: rotateY(0deg) skewY(0deg); opacity: 1; }
+  45%  { transform: rotateY(-80deg) skewY(-7deg); }
+  70%  { transform: rotateY(-140deg) skewY(4deg); opacity: 1; }
+  100% { transform: rotateY(-178deg) skewY(0deg); opacity: 0; }
+}
+
+/* The cover turns without fading itself (opacity on a 3D parent flattens it, which would
+   show the cover art mirrored); its two faces fade instead as it lands. */
+@keyframes landing-openbook-turn-solid {
+  0%   { transform: rotateY(0deg) skewY(0deg); }
+  45%  { transform: rotateY(-80deg) skewY(-4deg); }
+  70%  { transform: rotateY(-140deg) skewY(2deg); }
+  100% { transform: rotateY(-178deg) skewY(0deg); }
+}
+.landing-openbook__cover > * {
+  animation: landing-openbook-land 0.95s 0.25s linear both;
+}
+@keyframes landing-openbook-land {
+  0%, 72% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Paper leaves: lines of print on the front, a shade that sweeps across as they turn */
+.landing-openbook__leaf {
+  position: absolute;
+  top: 1.5%;
+  bottom: 1.5%;
+  left: 50%;
+  width: 48.5%;
+  transform-origin: left center;
+  border-radius: 0 4px 4px 0;
+  background:
+    linear-gradient(to right, rgb(0 0 0 / 0.12), transparent 14%),
+    repeating-linear-gradient(to bottom, transparent 0 13px, rgb(60 64 84 / 0.14) 13px 17px) 12% 14% / 76% 74% no-repeat,
+    #f4efe3;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.05);
+  animation: landing-openbook-turn 0.75s cubic-bezier(0.45, 0, 0.2, 1) both;
+  pointer-events: none;
+}
+.landing-openbook__leaf::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to left, rgb(0 0 0 / 0.28), transparent 60%);
+  animation: landing-openbook-shade 0.75s ease-in-out both;
+  animation-delay: inherit;
+}
+.landing-openbook__leaf--1 { animation-delay: 0.7s; }
+.landing-openbook__leaf--2 { animation-delay: 0.92s; }
+
+@keyframes landing-openbook-shade {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
+}
+
+/* Phones: the right-hand page alone, a little taller */
+@media (max-width: 639px) {
+  .landing-openbook__spread { grid-template-columns: 1fr; width: min(100%, 22rem); aspect-ratio: auto; }
+  .landing-openbook__page--left { display: none; }
+  .landing-openbook__page--right { border-radius: 6px; min-height: 22rem; }
+  .landing-openbook__cover { left: 0; width: 100%; }
+  .landing-openbook__leaf { left: 1.5%; width: 97%; }
+  .landing-openbook__cover-front { border-radius: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-openbook__spread { animation: none; }
+  .landing-openbook__cover,
+  .landing-openbook__leaf { display: none; }
+}
+
+/* ── Flat phone (no WebGL): still read as a 3D object ─────────────────────
+   Turned a little in perspective, with a lit edge, a thickness shadow and small
+   power/volume buttons; it squares up on hover. */
+.landing-phone {
+  transform: perspective(1400px) rotateY(-14deg) rotateX(4deg);
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow:
+    inset 0 0 0 1px rgb(255 255 255 / 0.14),
+    inset 2px 0 0 rgb(255 255 255 / 0.18),
+    6px 0 0 -1px #151a2c,
+    10px 2px 0 -2px #0b0e1a,
+    0 40px 70px -24px rgb(0 0 0 / 0.75);
+}
+.landing-phone:hover { transform: perspective(1400px) rotateY(-4deg) rotateX(2deg); }
+.landing-phone::before,
+.landing-phone::after {
+  content: '';
+  position: absolute;
+  right: -3px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: #2a3048;
+}
+.landing-phone::before { top: 22%; height: 7%; }
+.landing-phone::after { top: 32%; height: 4%; }
+@media (prefers-reduced-motion: reduce) {
+  .landing-phone { transition: none; }
+}

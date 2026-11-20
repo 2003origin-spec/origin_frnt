@@ -108,7 +108,7 @@ export default function StreakPreview() {
   });
 
   return (
-    <section className="py-10 sm:py-16 lg:py-20 relative z-10 overflow-hidden">
+    <section className="py-16 sm:py-24 lg:py-28 relative z-10 overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(ellipse_60%_50%_at_50%_70%,rgba(0,102,255,0.05),transparent)] pointer-events-none" />
 
       <div className="max-w-5xl mx-auto px-5 sm:px-6">
@@ -124,7 +124,7 @@ export default function StreakPreview() {
             <span className="text-sm">🔥</span>
             <span className="text-[10px] font-black text-primary tracking-[0.4em] uppercase">Streak System</span>
           </div>
-          <h2 className="text-3xl xs:text-4xl sm:text-6xl lg:text-7xl font-black tracking-tighter leading-[0.95]">
+          <h2 className="text-3xl xs:text-4xl sm:text-5xl lg:text-6xl font-black tracking-tighter leading-[0.95]">
             <span className="text-outline">Day 48 is</span><br />
             <span className="bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">waiting for you.</span>
           </h2>

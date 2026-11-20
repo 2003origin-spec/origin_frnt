@@ -52,8 +52,13 @@ export default async function HomePage() {
   // already rendered per request (the root layout reads the session cookie), so
   // this changes no caching.
   const rankPredictorEnabled = (await predictorFlags()).predictor;
+  // "Only on Origin" lists a feature only while it is live: env flag plus the
+  // /admin/incidents override, read from the same non-blocking snapshot.
+  const { flagOverrides } = await getIncidentStateNonBlocking();
+  const flag = (key: 'originNow' | 'contest' | 'notes') => flagOverrides.get(key) ?? isFeatureEnabled(key);
+  const flags = { originNow: flag('originNow'), contest: flag('contest'), notes: flag('notes') };
   // Inside our Android app shell (UA marker OriginApp/…): no "get the app" section or pill,
   // decided on the server so nothing renders and then disappears.
   const inAppShell = parseAppVersionFromUserAgent((await headers()).get('user-agent')) !== null;
-  return <HomeClient rankPredictorEnabled={rankPredictorEnabled} inAppShell={inAppShell} />;
+  return <HomeClient rankPredictorEnabled={rankPredictorEnabled} inAppShell={inAppShell} flags={flags} />;
 }

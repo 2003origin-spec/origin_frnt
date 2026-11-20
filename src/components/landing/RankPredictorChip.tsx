@@ -23,7 +23,7 @@ export default function RankPredictorChip() {
         href="#rank-predictor"
         aria-label="Free Rank Predictor"
         onClick={onClick}
-        className="inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card py-1 pl-1.5 pr-4 text-[15px] font-semibold text-foreground transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+        className="landing-glass-chip inline-flex min-h-11 items-center gap-2 rounded-full border border-border bg-card py-1 pl-1.5 pr-4 text-[15px] font-semibold text-foreground transition-colors hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
       >
         <span className="rounded-full bg-primary px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-primary-foreground">Free</span>
         Rank Predictor
