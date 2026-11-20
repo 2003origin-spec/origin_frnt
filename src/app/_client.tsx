@@ -3,8 +3,17 @@
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'next/navigation';
 import LandingPage from '@/sections/LandingPage';
+import type { OnlyOnOriginFlags } from '@/components/landing/orbit/OrbitSections';
 
-export default function HomeClient({ rankPredictorEnabled, inAppShell = false }: { rankPredictorEnabled: boolean; inAppShell?: boolean }) {
+export default function HomeClient({
+  rankPredictorEnabled,
+  inAppShell = false,
+  flags,
+}: {
+  rankPredictorEnabled: boolean;
+  inAppShell?: boolean;
+  flags?: OnlyOnOriginFlags;
+}) {
   const { user } = useAuth();
   const router = useRouter();
 
@@ -28,7 +37,7 @@ export default function HomeClient({ rankPredictorEnabled, inAppShell = false }:
   // No intro video / splash gate — render the landing content immediately.
   return (
     <main className="relative min-h-dvh bg-background text-foreground">
-      <LandingPage onGetStarted={handleGetStarted} rankPredictorEnabled={rankPredictorEnabled} inAppShell={inAppShell} />
+      <LandingPage onGetStarted={handleGetStarted} rankPredictorEnabled={rankPredictorEnabled} inAppShell={inAppShell} flags={flags} />
     </main>
   );
 }
