@@ -539,8 +539,8 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
               screens={HERO_SCREENS}
               alts={HERO_ALTS}
               priority
-              className="mx-auto w-[min(84vw,340px)] lg:w-[300px] xl:w-[330px]"
-              stageClassName="h-[min(178vw,720px)] w-full lg:h-[660px] xl:h-[720px]"
+              className="landing-phone-fit lg:w-[300px] xl:w-[330px]"
+              stageClassName="landing-phone-stage lg:h-[660px] xl:h-[720px]"
             />
           </section>
 

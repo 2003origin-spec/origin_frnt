@@ -237,13 +237,13 @@ export function DayWithOrigin({ rankPredictorEnabled }: { rankPredictorEnabled: 
                 <h3 className="font-heading text-2xl font-bold text-foreground sm:text-3xl">{s.title}</h3>
                 <p className="landing-lead mt-3 max-w-md">{s.body}</p>
                 {/* Phones and tablets: each step carries its own screen */}
-                <div className="lg:hidden">
+                <div className="landing-step__phone mt-6 lg:hidden">
                   <PhoneShowcase
                     screens={STEP_SHOTS[i]}
                     alts={STEP_ALTS[i]}
                     lazy
-                    className="mx-auto mt-6 w-[min(80vw,320px)] sm:mx-0"
-                    stageClassName="h-[min(170vw,660px)] w-full"
+                    className="landing-phone-fit"
+                    stageClassName="landing-phone-stage"
                   />
                 </div>
               </li>

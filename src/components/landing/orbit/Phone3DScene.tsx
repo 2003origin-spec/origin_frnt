@@ -187,6 +187,7 @@ export default function Phone3DScene({ screens, active = 0, crop = false, entran
 
     // ── layout ────────────────────────────────────────────────────────────
     const lookY = crop ? H / 2 - 0.62 : 0;
+    let baseYaw = -0.32; // set per stage shape in resize()
     const resize = () => {
       const w = host.clientWidth;
       const h = host.clientHeight;
@@ -198,6 +199,9 @@ export default function Phone3DScene({ screens, active = 0, crop = false, entran
       // Whole phone, or (crop) its top 1.45 units, plus room to tilt.
       // Narrow stages (phones) keep less margin so the phone fills the width and stays readable.
       const tight = camera.aspect < 0.7;
+      // Narrow stages (phones): turn the phone less, so it reads as centred and its side
+      // does not push it toward one edge.
+      baseYaw = tight ? -0.14 : -0.32;
       const needH = crop ? 1.6 : H + (tight ? 0.22 : 0.35);
       const needW = W + (crop ? 0.3 : tight ? 0.16 : 0.55);
       const dist = Math.max(needH / 2 / Math.tan(fovV / 2), needW / 2 / (Math.tan(fovV / 2) * camera.aspect));
@@ -261,7 +265,7 @@ export default function Phone3DScene({ screens, active = 0, crop = false, entran
       tilt.x += (tiltTarget.x - tilt.x) * (1 - Math.exp(-5 * dt));
       tilt.y += (tiltTarget.y - tilt.y) * (1 - Math.exp(-5 * dt));
       const float = reduceMotion ? 0 : Math.sin(t * 0.9) * 0.03;
-      phone.rotation.set(0.05 + tilt.x, -0.32 + tilt.y + (1 - e) * -1.1, 0.02);
+      phone.rotation.set(0.05 + tilt.x, baseYaw + tilt.y + (1 - e) * -1.1, 0.02);
       phone.position.y = float - (1 - e) * 0.5;
       if (fade) {
         const ft = Math.min(1, (t - fade.start) / 0.45);

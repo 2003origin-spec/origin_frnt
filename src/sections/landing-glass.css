@@ -1661,3 +1661,38 @@
 @media (prefers-reduced-motion: reduce) {
   .landing-phone { transition: none; }
 }
+
+/* ── Phones: nothing wider than the screen, phones fit the visible area ─────
+   Base layer, so every lg:/md: column utility still wins at its breakpoint.
+   A grid with no column rule sizes its one column to the widest child (the 3D
+   canvases carry a pixel width), which pushed the book card and the story past
+   the right edge on narrow phones, where the page's scroll box cut them off. */
+@layer base {
+  .landing-glass .grid { grid-template-columns: minmax(0, 1fr); }
+  .landing-glass .grid > * { min-width: 0; }
+  .landing-glass canvas { max-width: 100%; }
+}
+
+.landing-bookcard { overflow-wrap: anywhere; }
+
+/* The visible area on a phone: the screen (svh: with the browser's bars showing)
+   minus the floating header (~92px) and the bottom "Ask a doubt free" bar (~100px).
+   Components layer, so the lg: sizes on each phone win on desktop. */
+@layer components {
+  .landing-phone-fit {
+    width: min(84vw, 340px, calc((100svh - 212px) * 0.45)); /* 0.45 = the phone shape (9:20), so the flat fallback fits too */
+    margin-inline: auto;
+  }
+  .landing-phone-stage {
+    width: 100%;
+    height: min(178vw, 720px, calc(100svh - 212px));
+    min-height: 340px;
+  }
+}
+
+/* Story steps on phones and tablets: the phone sits in the middle of the screen,
+   not of the text column (which starts after the timeline line). */
+.landing-step__phone {
+  margin-left: calc(-2.25rem - 2px);
+  width: calc(100% + 2.25rem + 2px);
+}

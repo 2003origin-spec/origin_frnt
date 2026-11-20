@@ -67,10 +67,10 @@ const DOWNLOAD_ALTS = ["The Origin app home screen: today's missions with Ori, c
 /** The same 3D phone as the rest of the landing page (flat frame where 3D is not available). */
 function PhoneMockup() {
   return (
-    <div className="relative w-[min(80vw,300px)] lg:w-[320px]">
+    <div className="landing-phone-fit relative lg:w-[320px]">
       {/* Soft glow behind the phone, in the brand colour */}
       <div aria-hidden className="absolute -inset-10 rounded-full bg-primary/20 blur-3xl" />
-      <PhoneShowcase screens={DOWNLOAD_SHOTS} alts={DOWNLOAD_ALTS} lazy className="relative w-full" stageClassName="h-[min(170vw,640px)] w-full lg:h-[680px]" />
+      <PhoneShowcase screens={DOWNLOAD_SHOTS} alts={DOWNLOAD_ALTS} lazy className="relative w-full" stageClassName="landing-phone-stage lg:h-[680px]" />
     </div>
   );
 }
