@@ -11,8 +11,8 @@
 import { safeNext } from "./safe-next";
 import { EXAM_PAGE_LIST } from "./seo/rank-predictor-seo";
 
-/** The predictor, its exam pages (/rank-predictor/neet …) and the college finder. */
-const LOGIN_RETURN_PATHS: readonly string[] = ["/rank-predictor", ...EXAM_PAGE_LIST.map((page) => page.path), "/rank-predictor/colleges"];
+/** The predictor, its exam pages (/rank-predictor/neet …), the college finder and the pricing page. */
+const LOGIN_RETURN_PATHS: readonly string[] = ["/premium", "/rank-predictor", ...EXAM_PAGE_LIST.map((page) => page.path), "/rank-predictor/colleges"];
 
 /** The allowed return path from a raw `next` value, or null. */
 export function loginReturnPath(rawNext: string | null | undefined): string | null {

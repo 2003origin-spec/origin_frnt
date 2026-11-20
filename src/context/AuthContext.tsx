@@ -128,7 +128,9 @@ const GUEST_ONLY_PATHS = ['/', '/auth', '/role-selection'];
 // visitors, V1/PERCENTILE_PREDICTOR_PLAN.md §8); the page itself 404s while its flag is off.
 // Its exam entry pages (/rank-predictor/neet …) are public too, taken from the same list the
 // pages, sitemap and route-policy test use (SEO_APP_DOWNLOAD_NOTES.md).
-const SHARED_PUBLIC_PATHS = ['/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor', ...EXAM_PAGE_LIST.map((page) => page.path), '/rank-predictor/colleges'];
+// '/premium' is the public pricing page (route-policy.ts makes it public at the edge too); the landing
+// page's "Compare plans" links there, and signed-out visitors see the prices with a sign-up button.
+const SHARED_PUBLIC_PATHS = ['/premium', '/terms-and-conditions', '/privacy-policy', '/childrens-policy', '/refund-policy', '/return-policy', '/shipping-policy', '/faq', '/founders', '/now/consent', '/rank-predictor', ...EXAM_PAGE_LIST.map((page) => page.path), '/rank-predictor/colleges'];
 
 function normalizeRole(role: User['role'] | undefined): 'student' | 'teacher' | 'admin' | null {
   return role === 'student' || role === 'teacher' || role === 'admin' ? role : null;

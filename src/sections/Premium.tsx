@@ -16,6 +16,8 @@ import { useAuth } from '@/context/AuthContext';
 import { ALL_SUBJECTS, getEntitledSubjects, hasAnyPremium, type Subject } from '@/lib/entitlements';
 import { ActiveBadge, SubjectCheckout } from '@/components/subscriptions/SubjectCheckout';
 import { OrderCheckout } from '@/components/payments/OrderCheckout';
+import Link from 'next/link';
+import { loginHrefFor, signupHrefFor } from '@/sections/RankPredictor/login-links';
 import { getPublicPaymentPricing } from '@/features/payments/client';
 import { cn } from '@/lib/utils';
 
@@ -41,6 +43,26 @@ const SUBJECT_META: Record<Subject, { label: string; Icon: typeof Atom; blurb: s
 };
 
 const GLOBAL_TOOLS = ['Ori', 'AI Explainer', 'Study Rooms'];
+
+/**
+ * Buying needs an account. Signed-out visitors (the landing page's "Compare plans") see the
+ * prices and this instead of the checkout buttons; after sign-up or login they come back here.
+ */
+function SignInToBuy({ className = '' }: { className?: string }) {
+  return (
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <Link
+        href={signupHrefFor('/premium')}
+        className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-bold text-primary-foreground"
+      >
+        Sign up to buy
+      </Link>
+      <Link href={loginHrefFor('/premium')} className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold text-foreground underline-offset-4 hover:underline">
+        I have an account · Log in
+      </Link>
+    </div>
+  );
+}
 
 export default function Premium({ onBack, paymentsEnabled = false, couponsEnabled = false, subscriptionsEnabled = false }: PremiumProps) {
   const router = useRouter();
@@ -229,7 +251,9 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
                     ) : null;
                   })()}
                   <p className="text-sm text-muted-foreground flex-1 mb-4 sm:mb-5">{meta.blurb}</p>
-                  {paymentsEnabled ? (
+                  {!user ? (
+                    <SignInToBuy />
+                  ) : paymentsEnabled ? (
                     <div className="space-y-2">
                       {activeTerms.map((term) => (
                         <OrderCheckout
@@ -286,7 +310,9 @@ export default function Premium({ onBack, paymentsEnabled = false, couponsEnable
               {pricing.bundle.listAmountMinor != null && pricing.bundle.listAmountMinor > pricing.bundle.amountMinor ? (
                 <div className="text-xs text-muted-foreground line-through">MRP ₹{rupees(pricing.bundle.listAmountMinor)}</div>
               ) : null}
-              {paymentsEnabled && pricing.bundle.id ? (
+              {!user ? (
+                <SignInToBuy className="mt-3" />
+              ) : paymentsEnabled && pricing.bundle.id ? (
                 <div className="mt-3 space-y-2">
                   {activeTerms.map((term) => (
                     <OrderCheckout
