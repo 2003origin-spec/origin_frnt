@@ -33,3 +33,12 @@ test("the exam pages are allowed return paths, so login comes back to the same e
   assert.equal(LOGIN_HREF, "/auth?next=%2Frank-predictor");
   assert.equal(SIGNUP_HREF, "/auth?mode=signup&next=%2Frank-predictor");
 });
+
+test("the pricing page is an allowed return path: sign up from /premium comes back to /premium", async () => {
+  const { loginHrefFor, signupHrefFor } = await import("@/sections/RankPredictor/login-links");
+  assert.equal(loginReturnPath("/premium"), "/premium");
+  for (const href of [loginHrefFor("/premium"), signupHrefFor("/premium")]) {
+    assert.equal(loginReturnPath(new URL(href, "https://www.o3origin.com").searchParams.get("next")), "/premium", href);
+  }
+  assert.equal(loginReturnPath("/premium/../admin"), null);
+});

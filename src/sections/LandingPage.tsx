@@ -408,13 +408,14 @@ export default function LandingPage({ onGetStarted, rankPredictorEnabled = false
                 className="absolute inset-0 bg-black/25"
                 onClick={() => setMobileMenuOpen(false)}
               />
-              {/* Drawer */}
+              {/* Drawer: scrolls on its own when it is taller than the screen (short phones,
+                  landscape, large text), without scrolling the page behind it */}
               <motion.div
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-                className="landing-glass-sheet absolute right-0 top-0 bottom-0 w-[min(80vw,300px)] flex flex-col pt-20 pb-10 px-8 gap-2"
+                className="landing-glass-sheet absolute right-0 top-0 bottom-0 w-[min(80vw,300px)] flex flex-col overflow-y-auto overscroll-contain pt-20 pb-10 px-8 gap-2 [&>*]:shrink-0"
               >
                 <button
                   onClick={() => setMobileMenuOpen(false)}
